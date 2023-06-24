@@ -95,10 +95,8 @@ pub enum Signing {
     Rs512,
 
     /// No digital signature or MAC performed (Optional)
-    ///
-    /// This variant is renamed as `Null` to avoid colliding with `Option::None`.
     #[serde(rename = "none")]
-    Null,
+    None,
 }
 
 impl Signing {
