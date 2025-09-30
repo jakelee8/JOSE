@@ -3,6 +3,7 @@
 
 use alloc::vec::Vec;
 use alloc::{boxed::Box, string::String};
+use core::ops::{Deref, DerefMut};
 
 use jose_b64::base64ct::Base64;
 use jose_b64::serde::Bytes;
@@ -51,12 +52,30 @@ impl Default for Protected {
     }
 }
 
+impl Deref for Protected {
+    type Target = Unprotected;
+
+    fn deref(&self) -> &Self::Target {
+        &self.oth
+    }
+}
+
+impl DerefMut for Protected {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.oth
+    }
+}
+
 /// The JWS Unprotected Header
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Unprotected {
     /// RFC 7515 Section 4.1.1
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub alg: Option<Signing>,
+
+    /// RFC 7515 Section 4.1.2
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub jku: Option<String>,
 
     /// RFC 7515 Section 4.1.3
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -65,6 +84,10 @@ pub struct Unprotected {
     /// RFC 7515 Section 4.1.4
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub kid: Option<String>,
+
+    /// RFC 7515 Section 4.1.5
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub x5u: Option<String>,
 
     /// RFC 7515 Section 4.1.6
     #[serde(skip_serializing_if = "Option::is_none", default)]
