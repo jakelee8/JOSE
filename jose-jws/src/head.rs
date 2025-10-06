@@ -3,7 +3,6 @@
 
 use alloc::vec::Vec;
 use alloc::{boxed::Box, string::String};
-use core::ops::{Deref, DerefMut};
 
 use jose_b64::base64ct::Base64;
 use jose_b64::serde::Bytes;
@@ -49,20 +48,6 @@ impl Default for Protected {
             b64: true,
             oth: Unprotected::default(),
         }
-    }
-}
-
-impl Deref for Protected {
-    type Target = Unprotected;
-
-    fn deref(&self) -> &Self::Target {
-        &self.oth
-    }
-}
-
-impl DerefMut for Protected {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.oth
     }
 }
 
