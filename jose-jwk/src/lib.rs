@@ -29,7 +29,7 @@ mod prm;
 mod thumbprint;
 
 pub use key::*;
-pub use prm::{Class, Operations, Parameters, Thumbprint};
+pub use prm::{Class, Operations, Parameters, RevocationReason, Revoked, Thumbprint};
 #[cfg(feature = "thumbprint")]
 pub use thumbprint::JwkThumbprint;
 
