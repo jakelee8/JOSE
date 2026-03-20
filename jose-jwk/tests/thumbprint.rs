@@ -3,11 +3,11 @@
 
 //! JWK Thumbprint tests including RFC 7638 examples.
 
+#![cfg(feature = "thumbprint")]
 #![allow(clippy::indexing_slicing)] // usage is always valid
 
 use std::collections::HashSet;
 
-use jose_jkt::JwkThumbprint;
 use jose_jwk::*;
 use sha2::{Sha256, Sha384, Sha512};
 

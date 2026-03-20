@@ -6,31 +6,15 @@
 //! This module provides methods for computing JWK Thumbprints, which are
 //! cryptographic hash values computed over the required members of a JWK.
 
-#![no_std]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
-#![doc = include_str!("../README.md")]
-#![doc(
-    html_logo_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg",
-    html_favicon_url = "https://raw.githubusercontent.com/RustCrypto/media/6ee8e381/logo.svg"
-)]
-#![forbid(unsafe_code)]
-#![warn(
-    clippy::panic,
-    clippy::panic_in_result_fn,
-    clippy::unwrap_used,
-    missing_docs,
-    rust_2018_idioms,
-    unused_lifetimes,
-    unused_qualifications
-)]
+#![cfg(feature = "thumbprint")]
 
 extern crate alloc;
 
 use alloc::string::String;
 
+use crate::{Ec, Jwk, Key, Oct, Okp, Rsa};
 use jose_b64::base64ct::{Base64UrlUnpadded, Encoding};
 use jose_b64::stream::{Encoder, Update};
-use jose_jwk::{Ec, Jwk, Key, Oct, Okp, Rsa};
 use sha2::{Digest, Sha256};
 
 /// Trait for computing JWK thumbprints.
@@ -117,7 +101,6 @@ impl JwkThumbprint for Key {
             Key::Rsa(rsa) => rsa.thumbprint_with_digest::<D>(),
             Key::Oct(oct) => oct.thumbprint_with_digest::<D>(),
             Key::Okp(okp) => okp.thumbprint_with_digest::<D>(),
-            _ => unreachable!("non-exhaustive enum should not have other variants"),
         }
     }
 }

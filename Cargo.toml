@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "jose-b64",
-    "jose-jkt",
     "jose-jwa",
     "jose-jwe",
     "jose-jwk",
@@ -15,7 +14,6 @@ opt-level = 2
 
 [patch.crates-io]
 jose-b64 = { path = "./jose-b64" }
-jose-jkt = { path = "./jose-jkt" }
 jose-jwa = { path = "./jose-jwa" }
 jose-jwe = { path = "./jose-jwe" }
 jose-jwk = { path = "./jose-jwk" }
