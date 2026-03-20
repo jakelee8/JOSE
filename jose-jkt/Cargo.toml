@@ -1,0 +1,27 @@
+[package]
+name = "jose-jkt"
+version = "0.1.0"
+authors = ["RustCrypto Developers"]
+license = "Apache-2.0 OR MIT"
+description = """
+Pure Rust implementation of JWK Thumbprint (RFC 7638) for the
+Javascript Object Signing and Encryption (JOSE) specification.
+"""
+documentation = "https://docs.rs/jose-jkt"
+homepage = "https://github.com/RustCrypto/JOSE/tree/master/jose-jkt"
+repository = "https://github.com/RustCrypto/JOSE"
+categories = ["cryptography", "data-structures", "encoding", "parser-implementations"]
+keywords = ["json", "jwk", "jwk-thumbprint", "jkt", "thumbprint", "rfc7638"]
+readme = "README.md"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+jose-jwk = { version = "=0.2.0-pre", default-features = false }
+jose-b64 = { version = "=0.2.0-pre", default-features = false }
+sha2 = { version = "=0.11.0-rc.2", default-features = false }
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
