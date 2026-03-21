@@ -17,8 +17,18 @@ readme = "README.md"
 edition = "2024"
 rust-version = "1.85"
 
+[features]
+default = []
+crypto = ["p256", "p384", "p521", "k256"]
+
 [dependencies]
 serde = { version = "1.0.185", default-features = false, features = ["alloc", "derive"] }
+
+# optional dependencies
+p256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+p384 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+p521 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+k256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
 
 [dev-dependencies]
 serde_json = "1.0.96"
