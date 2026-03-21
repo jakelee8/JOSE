@@ -18,8 +18,18 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+crypto = ["p256", "p384", "p521", "k256"]
+
 [dependencies]
 serde = { workspace = true }
+
+# optional dependencies
+p256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+p384 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+p521 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+k256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
