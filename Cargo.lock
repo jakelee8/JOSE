@@ -328,6 +328,10 @@ dependencies = [
 name = "jose-jwa"
 version = "0.2.0-pre"
 dependencies = [
+ "k256",
+ "p256",
+ "p384",
+ "p521",
  "serde",
  "serde_json",
 ]
