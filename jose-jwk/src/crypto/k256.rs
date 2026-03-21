@@ -6,7 +6,7 @@
 use k256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
 use k256::{EncodedPoint, FieldBytes, PublicKey, SecretKey};
 
-use jose_jwa::{Algorithm, Algorithm::Signing, Signing::*};
+use jose_jwa::{Algorithm, Algorithm::Signing, Signing::Es256K};
 
 use super::Error;
 use super::KeyInfo;

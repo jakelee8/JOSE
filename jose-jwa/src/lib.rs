@@ -118,7 +118,7 @@ mod tests {
 
         let input = vec![
             EdDsa, Es256, Es256K, Es384, Es512, Hs256, Hs384, Hs512, Ps256, Ps384, Ps512, Rs256,
-            Rs384, Rs512, Null,
+            Rs384, Rs512, None,
         ];
         let ser = serde_json::to_string(&input).expect("serialization failed");
 
