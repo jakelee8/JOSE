@@ -6,7 +6,7 @@
 use p521::elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
 use p521::{FieldBytes, PublicKey, Sec1Point, SecretKey};
 
-use jose_jwa::{Algorithm, Algorithm::Signing, Signing::*};
+use jose_jwa::{Algorithm, Algorithm::Signing, Signing::Es512};
 
 use super::Error;
 use super::KeyInfo;
