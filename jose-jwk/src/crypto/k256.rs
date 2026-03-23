@@ -6,7 +6,7 @@
 use k256::elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
 use k256::{FieldBytes, PublicKey, Sec1Point, SecretKey};
 
-use jose_jwa::{Algorithm, Algorithm::Signing, Signing::Es256K};
+use jose_jwa::{Algorithm, Algorithm::Sealing, Algorithm::Signing, Sealing::*, Signing::Es256K};
 
 use super::Error;
 use super::KeyInfo;
@@ -23,7 +23,16 @@ impl KeyInfo for PublicKey {
     }
 
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        matches!(algo, Signing(Es256K))
+        matches!(
+            algo,
+            // Signing algorithms
+            Signing(Es256K)
+                // Sealing algorithms (ECDH)
+                | Sealing(EcdhEs)
+                | Sealing(EcdhEsA128Kw)
+                | Sealing(EcdhEsA192Kw)
+                | Sealing(EcdhEsA256Kw)
+        )
     }
 }
 
@@ -33,7 +42,16 @@ impl KeyInfo for SecretKey {
     }
 
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        matches!(algo, Signing(Es256K))
+        matches!(
+            algo,
+            // Signing algorithms
+            Signing(Es256K)
+                // Sealing algorithms (ECDH)
+                | Sealing(EcdhEs)
+                | Sealing(EcdhEsA128Kw)
+                | Sealing(EcdhEsA192Kw)
+                | Sealing(EcdhEsA256Kw)
+        )
     }
 }
 

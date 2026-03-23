@@ -8,7 +8,7 @@ use rsa::{
     traits::{PrivateKeyParts, PublicKeyParts},
 };
 
-use jose_jwa::{Algorithm, Algorithm::Signing, Signing as S};
+use jose_jwa::{Algorithm, Algorithm::Sealing, Algorithm::Signing, Sealing::*, Signing as S};
 
 use super::Error;
 use super::KeyInfo;
@@ -31,12 +31,16 @@ impl KeyInfo for RsaPublicKey {
 
         #[allow(clippy::match_like_matches_macro)]
         match algo {
+            // Signing algorithms
             Signing(S::Rs256) => true,
             Signing(S::Rs384) => true,
             Signing(S::Rs512) => true,
             Signing(S::Ps256) => true,
             Signing(S::Ps384) => true,
             Signing(S::Ps512) => true,
+            // Sealing algorithms (RSA-OAEP)
+            Sealing(RsaOaep) => true,
+            Sealing(RsaOaep256) => true,
             _ => false,
         }
     }
@@ -50,12 +54,16 @@ impl KeyInfo for RsaPrivateKey {
     fn is_supported(&self, algo: &Algorithm) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match (algo, self.strength()) {
+            // Signing algorithms
             (Signing(S::Rs256), 16..) => true,
             (Signing(S::Rs384), 24..) => true,
             (Signing(S::Rs512), 32..) => true,
             (Signing(S::Ps256), 16..) => true,
             (Signing(S::Ps384), 24..) => true,
             (Signing(S::Ps512), 32..) => true,
+            // Sealing algorithms (RSA-OAEP)
+            (Sealing(RsaOaep), 16..) => true,
+            (Sealing(RsaOaep256), 16..) => true,
             _ => false,
         }
     }
