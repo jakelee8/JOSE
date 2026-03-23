@@ -20,7 +20,7 @@ rust-version.workspace = true
 
 [features]
 default = []
-crypto = ["p256", "p384", "p521", "k256"]
+crypto = ["aes-gcm", "aes-kw", "hmac", "p256", "p384", "p521", "k256", "rsa", "sha1", "sha2"]
 # Include legacy/vulnerable algorithms (not recommended for production)
 legacy = ["legacy-rsa1_5"]
 legacy-rsa1_5 = []
@@ -29,12 +29,19 @@ legacy-rsa1_5 = []
 serde = { workspace = true }
 
 # optional dependencies
-p256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
-p384 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
-p521 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
-k256 = { version = "0.14.0-pre.9", default-features = false, optional = true, features = ["arithmetic"] }
+aes-gcm = { workspace = true, default-features = false, optional = true }
+aes-kw = { workspace = true, default-features = false, optional = true }
+hmac = { workspace = true, default-features = false, optional = true }
+k256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
+p256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
+p384 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
+p521 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
+rsa = { workspace = true, default-features = false, optional = true }
+sha1 = { workspace = true, default-features = false, optional = true }
+sha2 = { workspace = true, default-features = false, optional = true }
 
 [dev-dependencies]
+getrandom = { workspace = true }
 serde_json = { workspace = true }
 
 [package.metadata.docs.rs]
