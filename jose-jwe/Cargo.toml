@@ -18,15 +18,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
-[features]
-default = []
-
-# Recommended algorithms (includes all recommended algorithms from RFC 7518)
-recommended = ["rand"]
-
-# Random number generation support
-rand = ["dep:rand_core", "dep:getrandom"]
-
 [dependencies]
 jose-b64 = { workspace = true }
 jose-jwa = { workspace = true }
@@ -35,14 +26,7 @@ jose-jwk = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Random number generation
-rand_core = { workspace = true, optional = true }
-getrandom = { workspace = true, optional = true }
-
 zeroize = { workspace = true }
-
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true
