@@ -4,7 +4,7 @@
 use core::ops::Deref;
 
 use alloc::{boxed::Box, vec::Vec};
-use jose_jwa::{Algorithm, Algorithm::Signing, Signing::*};
+use jose_jwa::{Algorithm, Algorithm::Sealing, Algorithm::Signing, Sealing::*, Signing::*};
 
 use crate::{Ec, EcCurves, Jwk, Key, Oct, Okp, OkpCurves, Rsa};
 
@@ -66,14 +66,27 @@ impl KeyInfo for [u8] {
         self.len()
     }
 
-    #[allow(clippy::match_like_matches_macro)]
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        match (algo, self.strength()) {
-            (Signing(Hs256), 16..) => true,
-            (Signing(Hs384), 24..) => true,
-            (Signing(Hs512), 32..) => true,
-            _ => false,
-        }
+        matches!(
+            (algo, self.strength()),
+            // Signing algorithms (HMAC)
+            (Signing(Hs256), 16..)
+                | (Signing(Hs384), 24..)
+                | (Signing(Hs512), 32..)
+                // Sealing algorithms (AES Key Wrap)
+                | (Sealing(A128Kw), 16..)
+                | (Sealing(A192Kw), 24..)
+                | (Sealing(A256Kw), 32..)
+                | (Sealing(A128GcmKw), 16..)
+                | (Sealing(A192GcmKw), 24..)
+                | (Sealing(A256GcmKw), 32..)
+                // Password-based encryption
+                | (Sealing(Pbes2Hs256A128Kw), 16..)
+                | (Sealing(Pbes2Hs384A192Kw), 24..)
+                | (Sealing(Pbes2Hs512A256Kw), 32..)
+                // Direct key agreement (key is the CEK)
+                | (Sealing(Dir), 1..)
+        )
     }
 }
 
@@ -117,15 +130,32 @@ impl KeyInfo for Ec {
         }
     }
 
-    #[allow(clippy::match_like_matches_macro)]
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        match (self.crv, algo) {
-            (EcCurves::P256, Signing(Es256)) => true,
-            (EcCurves::P256K, Signing(Es256K)) => true,
-            (EcCurves::P384, Signing(Es384)) => true,
-            (EcCurves::P521, Signing(Es512)) => true,
-            _ => false,
-        }
+        matches!(
+            (self.crv, algo),
+            // Signing algorithms
+            (EcCurves::P256, Signing(Es256))
+                | (EcCurves::P256K, Signing(Es256K))
+                | (EcCurves::P384, Signing(Es384))
+                | (EcCurves::P521, Signing(Es512))
+                // Sealing algorithms (ECDH key agreement) - all NIST curves support ECDH
+                | (EcCurves::P256, Sealing(EcdhEs))
+                | (EcCurves::P256, Sealing(EcdhEsA128Kw))
+                | (EcCurves::P256, Sealing(EcdhEsA192Kw))
+                | (EcCurves::P256, Sealing(EcdhEsA256Kw))
+                | (EcCurves::P256K, Sealing(EcdhEs))
+                | (EcCurves::P256K, Sealing(EcdhEsA128Kw))
+                | (EcCurves::P256K, Sealing(EcdhEsA192Kw))
+                | (EcCurves::P256K, Sealing(EcdhEsA256Kw))
+                | (EcCurves::P384, Sealing(EcdhEs))
+                | (EcCurves::P384, Sealing(EcdhEsA128Kw))
+                | (EcCurves::P384, Sealing(EcdhEsA192Kw))
+                | (EcCurves::P384, Sealing(EcdhEsA256Kw))
+                | (EcCurves::P521, Sealing(EcdhEs))
+                | (EcCurves::P521, Sealing(EcdhEsA128Kw))
+                | (EcCurves::P521, Sealing(EcdhEsA192Kw))
+                | (EcCurves::P521, Sealing(EcdhEsA256Kw))
+        )
     }
 }
 
@@ -134,14 +164,27 @@ impl KeyInfo for Oct {
         self.k.len()
     }
 
-    #[allow(clippy::match_like_matches_macro)]
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        match (algo, self.strength()) {
-            (Signing(Hs256), 16..) => true,
-            (Signing(Hs384), 24..) => true,
-            (Signing(Hs512), 32..) => true,
-            _ => false,
-        }
+        matches!(
+            (algo, self.strength()),
+            // Signing algorithms (HMAC)
+            (Signing(Hs256), 16..)
+                | (Signing(Hs384), 24..)
+                | (Signing(Hs512), 32..)
+                // Sealing algorithms (AES Key Wrap)
+                | (Sealing(A128Kw), 16..)
+                | (Sealing(A192Kw), 24..)
+                | (Sealing(A256Kw), 32..)
+                | (Sealing(A128GcmKw), 16..)
+                | (Sealing(A192GcmKw), 24..)
+                | (Sealing(A256GcmKw), 32..)
+                // Password-based encryption
+                | (Sealing(Pbes2Hs256A128Kw), 16..)
+                | (Sealing(Pbes2Hs384A192Kw), 24..)
+                | (Sealing(Pbes2Hs512A256Kw), 32..)
+                // Direct key agreement (key is the CEK)
+                | (Sealing(Dir), 1..)
+        )
     }
 }
 
@@ -156,7 +199,23 @@ impl KeyInfo for Okp {
     }
 
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        matches!(algo, Signing(EdDsa))
+        matches!(
+            (self.crv, algo),
+            // Signing algorithms (EdDSA)
+            (OkpCurves::Ed25519, Signing(EdDsa))
+                | (OkpCurves::Ed25519, Signing(Ed25519))
+                | (OkpCurves::Ed448, Signing(EdDsa))
+                | (OkpCurves::Ed448, Signing(Ed448))
+                // Sealing algorithms (ECDH key agreement) - X25519/X448 are for ECDH only
+                | (OkpCurves::X25519, Sealing(EcdhEs))
+                | (OkpCurves::X25519, Sealing(EcdhEsA128Kw))
+                | (OkpCurves::X25519, Sealing(EcdhEsA192Kw))
+                | (OkpCurves::X25519, Sealing(EcdhEsA256Kw))
+                | (OkpCurves::X448, Sealing(EcdhEs))
+                | (OkpCurves::X448, Sealing(EcdhEsA128Kw))
+                | (OkpCurves::X448, Sealing(EcdhEsA192Kw))
+                | (OkpCurves::X448, Sealing(EcdhEsA256Kw))
+        )
     }
 }
 
@@ -165,16 +224,19 @@ impl KeyInfo for Rsa {
         self.n.len() / 16
     }
 
-    #[allow(clippy::match_like_matches_macro)]
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        match (algo, self.strength()) {
-            (Signing(Rs256), 16..) => true,
-            (Signing(Rs384), 24..) => true,
-            (Signing(Rs512), 32..) => true,
-            (Signing(Ps256), 16..) => true,
-            (Signing(Ps384), 24..) => true,
-            (Signing(Ps512), 32..) => true,
-            _ => false,
-        }
+        matches!(
+            (algo, self.strength()),
+            // Signing algorithms (RSA PKCS1 and PSS)
+            (Signing(Rs256), 16..)
+                | (Signing(Rs384), 24..)
+                | (Signing(Rs512), 32..)
+                | (Signing(Ps256), 16..)
+                | (Signing(Ps384), 24..)
+                | (Signing(Ps512), 32..)
+                // Sealing algorithms (RSA-OAEP)
+                | (Sealing(RsaOaep), 16..)
+                | (Sealing(RsaOaep256), 16..)
+        )
     }
 }

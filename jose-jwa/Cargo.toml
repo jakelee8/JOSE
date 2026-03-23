@@ -21,6 +21,9 @@ rust-version.workspace = true
 [features]
 default = []
 crypto = ["p256", "p384", "p521", "k256"]
+# Include legacy/vulnerable algorithms (not recommended for production)
+legacy = ["legacy-rsa1_5"]
+legacy-rsa1_5 = []
 
 [dependencies]
 serde = { workspace = true }
