@@ -19,14 +19,36 @@
     unused_qualifications
 )]
 
-mod crypto;
+#[cfg(any(
+    feature = "aes-gcm",
+    feature = "aes-kw",
+    feature = "hmac",
+    feature = "p256",
+    feature = "p384",
+    feature = "p521",
+    feature = "k256",
+    feature = "rsa"
+))]
+extern crate alloc;
 
 mod alg;
+mod crypto;
 mod enc;
 mod seal;
 mod sign;
 
-pub use alg::Algorithm;
-pub use enc::Encryption;
-pub use seal::Sealing;
-pub use sign::Signing;
+pub use self::alg::*;
+#[cfg(any(
+    feature = "aes-gcm",
+    feature = "aes-kw",
+    feature = "hmac",
+    feature = "p256",
+    feature = "p384",
+    feature = "p521",
+    feature = "k256",
+    feature = "rsa"
+))]
+pub use self::crypto::*;
+pub use self::enc::*;
+pub use self::seal::*;
+pub use self::sign::*;
