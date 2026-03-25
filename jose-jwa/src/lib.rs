@@ -20,8 +20,10 @@
 )]
 
 #[cfg(any(
+    feature = "aes-cbc-hmac",
     feature = "aes-gcm",
     feature = "aes-kw",
+    feature = "ecdh",
     feature = "hmac",
     feature = "p256",
     feature = "p384",
@@ -34,13 +36,14 @@ extern crate alloc;
 mod alg;
 mod crypto;
 mod enc;
-mod seal;
 mod sign;
 
 pub use self::alg::*;
 #[cfg(any(
+    feature = "aes-cbc-hmac",
     feature = "aes-gcm",
     feature = "aes-kw",
+    feature = "ecdh",
     feature = "hmac",
     feature = "p256",
     feature = "p384",
@@ -50,5 +53,4 @@ pub use self::alg::*;
 ))]
 pub use self::crypto::*;
 pub use self::enc::*;
-pub use self::seal::*;
 pub use self::sign::*;

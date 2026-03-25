@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 use jose_b64::stream::Update;
 use zeroize::Zeroizing;
 
-use crate::{Ciphertext, Flattened, General, Jwe, Protected, Recipient, Unprotected};
+use crate::{Flattened, General, Jwe, Payload, Protected, Recipient, Unprotected};
 
 /// Ciphertext creation state (content encryption with CEK)
 pub trait Encryptor<U = Unprotected, P = Protected<U>>: Update {
@@ -43,7 +43,7 @@ pub trait Encryptor<U = Unprotected, P = Protected<U>>: Update {
     }
 
     /// Finish processing plaintext and return the encrypted payload.
-    fn finish(self) -> Result<Ciphertext, Self::FinishError>;
+    fn finish(self) -> Result<Payload, Self::FinishError>;
 }
 
 /// An encryption key (handles both key management + content encryption)
@@ -81,7 +81,7 @@ impl core::fmt::Display for AllDecryptorsFailed {
     }
 }
 
-// Note: std::error::Error impl omitted for no_std compatibility
+impl core::error::Error for AllDecryptorsFailed {}
 
 /// A decryption key (handles both key management + content decryption)
 pub trait DecryptingKey<'a, T> {

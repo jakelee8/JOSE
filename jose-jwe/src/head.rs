@@ -35,7 +35,7 @@ use core::ops::{Deref, DerefMut};
 
 use jose_b64::base64ct::Base64;
 use jose_b64::serde::Bytes;
-use jose_jwa::{Encryption, Sealing};
+use jose_jwa::{Encryption, KeyManagement};
 use jose_jwk::{Jwk, Thumbprint};
 use serde::{Deserialize, Serialize};
 
@@ -56,12 +56,12 @@ pub enum Compression {
 /// Per RFC 7516, this is the Base64url-encoded JSON object before the first `.`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Protected<U = Unprotected> {
-    /// Key Management Algorithm (`alg`)
+    /// Key Management Mode (`alg`)
     ///
     /// Per RFC 7516 Section 4.1.1, this parameter identifies the cryptographic
-    /// algorithm used to encrypt or determine the Content Encryption Key (CEK).
+    /// mode used to encrypt or determine the Content Encryption Key (CEK).
     /// REQUIRED and MUST be integrity-protected per RFC 8725.
-    pub alg: Sealing,
+    pub alg: KeyManagement,
 
     /// Content Encryption Algorithm (`enc`)
     ///
@@ -141,12 +141,14 @@ pub struct Protected<U = Unprotected> {
     ///
     /// # Security
     ///
-    /// Per RFC 7518 Section 4.8.1, the minimum iteration count of 1000 is
+    /// Per RFC 7518 Section 4.8.1, a minimum iteration count of 1000 is
     /// RECOMMENDED. Per RFC 8725 Section 3.1, higher values (typically >= 10000)
-    /// are recommended for production. Implementations MUST validate the value is
-    /// appropriate for their security requirements.
+    /// are recommended for production.
+    ///
+    /// This is a JSON integer (`i64`). Callers MUST validate the value is positive
+    /// and fits in `u32` before passing it to the PBKDF2 function.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub p2c: Option<u64>,
+    pub p2c: Option<i64>,
 
     /// Initialization Vector (`iv`)
     ///
@@ -168,7 +170,7 @@ pub struct Protected<U = Unprotected> {
 impl<U: Default> Default for Protected<U> {
     fn default() -> Self {
         Self {
-            alg: Sealing::Dir,
+            alg: KeyManagement::Dir,
             enc: Encryption::A128Gcm,
             zip: None,
             crit: None,
@@ -265,7 +267,7 @@ mod tests {
     #[test]
     fn protected_deref() {
         let protected: Protected = Protected {
-            alg: Sealing::Dir,
+            alg: KeyManagement::Dir,
             enc: Encryption::A128Gcm,
             ..Default::default()
         };
@@ -289,7 +291,7 @@ mod tests {
     fn protected_default() {
         let protected: Protected = Protected::default();
         // alg and enc are now required, so they have default values
-        assert_eq!(protected.alg, Sealing::Dir);
+        assert_eq!(protected.alg, KeyManagement::Dir);
         assert_eq!(protected.enc, Encryption::A128Gcm);
         assert!(protected.zip.is_none());
         assert!(protected.crit.is_none());

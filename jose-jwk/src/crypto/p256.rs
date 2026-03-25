@@ -6,7 +6,9 @@
 use p256::elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
 use p256::{FieldBytes, PublicKey, Sec1Point, SecretKey};
 
-use jose_jwa::{Algorithm, Algorithm::Sealing, Algorithm::Signing, Sealing::*, Signing as S};
+use jose_jwa::{
+    Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing as S,
+};
 
 use super::Error;
 use super::KeyInfo;
@@ -28,10 +30,10 @@ impl KeyInfo for PublicKey {
             // Signing algorithms
             Signing(S::Es256)
                 // Sealing algorithms (ECDH)
-                | Sealing(EcdhEs)
-                | Sealing(EcdhEsA128Kw)
-                | Sealing(EcdhEsA192Kw)
-                | Sealing(EcdhEsA256Kw)
+                | KeyManagement(EcdhEs)
+                | KeyManagement(EcdhEsA128Kw)
+                | KeyManagement(EcdhEsA192Kw)
+                | KeyManagement(EcdhEsA256Kw)
         )
     }
 }
@@ -47,10 +49,10 @@ impl KeyInfo for SecretKey {
             // Signing algorithms
             Signing(S::Es256)
                 // Sealing algorithms (ECDH)
-                | Sealing(EcdhEs)
-                | Sealing(EcdhEsA128Kw)
-                | Sealing(EcdhEsA192Kw)
-                | Sealing(EcdhEsA256Kw)
+                | KeyManagement(EcdhEs)
+                | KeyManagement(EcdhEsA128Kw)
+                | KeyManagement(EcdhEsA192Kw)
+                | KeyManagement(EcdhEsA256Kw)
         )
     }
 }

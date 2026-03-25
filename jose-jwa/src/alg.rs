@@ -1,17 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Algorithm type that combines signing and sealing algorithms.
-
 use serde::{Deserialize, Serialize};
 
-use crate::{Sealing, Signing};
+#[cfg(any(
+    feature = "aes-kw",
+    feature = "aes-gcm",
+    feature = "rsa",
+    feature = "ecdh",
+    feature = "pbes2"
+))]
+use crate::KeyManagement;
+use crate::Signing;
 
 /// Possible types of algorithms that can exist in an "alg" descriptor.
 ///
 /// Per RFC 7517 Section 4.4, the "alg" parameter indicates what a key is for:
 /// - Signing algorithms: key signs/verifies data
-/// - Sealing algorithms: key seals/recovers CEK
+/// - Key management modes: key encrypts/decrypts data
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_docs)]
 #[serde(untagged)]
@@ -19,8 +25,15 @@ use crate::{Sealing, Signing};
 pub enum Algorithm {
     /// Algorithms used for digital signatures and MACs (RFC 7518 Section 3.1)
     Signing(Signing),
-    /// Algorithms used for key management/sealing (RFC 7518 Section 4.1)
-    Sealing(Sealing),
+    /// Algorithms used for key management (RFC 7518 Section 4.1)
+    #[cfg(any(
+        feature = "aes-kw",
+        feature = "aes-gcm",
+        feature = "rsa",
+        feature = "ecdh",
+        feature = "pbes2"
+    ))]
+    KeyManagement(KeyManagement),
 }
 
 impl From<Signing> for Algorithm {
@@ -30,9 +43,16 @@ impl From<Signing> for Algorithm {
     }
 }
 
-impl From<Sealing> for Algorithm {
+#[cfg(any(
+    feature = "aes-kw",
+    feature = "aes-gcm",
+    feature = "rsa",
+    feature = "ecdh",
+    feature = "pbes2"
+))]
+impl From<KeyManagement> for Algorithm {
     #[inline]
-    fn from(alg: Sealing) -> Self {
-        Self::Sealing(alg)
+    fn from(alg: KeyManagement) -> Self {
+        Self::KeyManagement(alg)
     }
 }

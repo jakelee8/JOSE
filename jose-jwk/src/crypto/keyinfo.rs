@@ -4,7 +4,7 @@
 use core::ops::Deref;
 
 use alloc::{boxed::Box, vec::Vec};
-use jose_jwa::{Algorithm, Algorithm::Sealing, Algorithm::Signing, Sealing::*, Signing::*};
+use jose_jwa::{Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing::*};
 
 use crate::{Ec, EcCurves, Jwk, Key, Oct, Okp, OkpCurves, Rsa};
 
@@ -74,18 +74,18 @@ impl KeyInfo for [u8] {
                 | (Signing(Hs384), 24..)
                 | (Signing(Hs512), 32..)
                 // Sealing algorithms (AES Key Wrap)
-                | (Sealing(A128Kw), 16..)
-                | (Sealing(A192Kw), 24..)
-                | (Sealing(A256Kw), 32..)
-                | (Sealing(A128GcmKw), 16..)
-                | (Sealing(A192GcmKw), 24..)
-                | (Sealing(A256GcmKw), 32..)
+                | (KeyManagement(A128Kw), 16..)
+                | (KeyManagement(A192Kw), 24..)
+                | (KeyManagement(A256Kw), 32..)
+                | (KeyManagement(A128GcmKw), 16..)
+                | (KeyManagement(A192GcmKw), 24..)
+                | (KeyManagement(A256GcmKw), 32..)
                 // Password-based encryption
-                | (Sealing(Pbes2Hs256A128Kw), 16..)
-                | (Sealing(Pbes2Hs384A192Kw), 24..)
-                | (Sealing(Pbes2Hs512A256Kw), 32..)
+                | (KeyManagement(Pbes2Hs256A128Kw), 16..)
+                | (KeyManagement(Pbes2Hs384A192Kw), 24..)
+                | (KeyManagement(Pbes2Hs512A256Kw), 32..)
                 // Direct key agreement (key is the CEK)
-                | (Sealing(Dir), 1..)
+                | (KeyManagement(Dir), 1..)
         )
     }
 }
@@ -138,23 +138,20 @@ impl KeyInfo for Ec {
                 | (EcCurves::P256K, Signing(Es256K))
                 | (EcCurves::P384, Signing(Es384))
                 | (EcCurves::P521, Signing(Es512))
-                // Sealing algorithms (ECDH key agreement) - all NIST curves support ECDH
-                | (EcCurves::P256, Sealing(EcdhEs))
-                | (EcCurves::P256, Sealing(EcdhEsA128Kw))
-                | (EcCurves::P256, Sealing(EcdhEsA192Kw))
-                | (EcCurves::P256, Sealing(EcdhEsA256Kw))
-                | (EcCurves::P256K, Sealing(EcdhEs))
-                | (EcCurves::P256K, Sealing(EcdhEsA128Kw))
-                | (EcCurves::P256K, Sealing(EcdhEsA192Kw))
-                | (EcCurves::P256K, Sealing(EcdhEsA256Kw))
-                | (EcCurves::P384, Sealing(EcdhEs))
-                | (EcCurves::P384, Sealing(EcdhEsA128Kw))
-                | (EcCurves::P384, Sealing(EcdhEsA192Kw))
-                | (EcCurves::P384, Sealing(EcdhEsA256Kw))
-                | (EcCurves::P521, Sealing(EcdhEs))
-                | (EcCurves::P521, Sealing(EcdhEsA128Kw))
-                | (EcCurves::P521, Sealing(EcdhEsA192Kw))
-                | (EcCurves::P521, Sealing(EcdhEsA256Kw))
+                // ECDH key agreement - P-256, P-384, P-521 only per RFC 7518 Section 4.6
+                // secp256k1 (P256K) is not defined for ECDH-ES in RFC 7518
+                | (EcCurves::P256, KeyManagement(EcdhEs))
+                | (EcCurves::P256, KeyManagement(EcdhEsA128Kw))
+                | (EcCurves::P256, KeyManagement(EcdhEsA192Kw))
+                | (EcCurves::P256, KeyManagement(EcdhEsA256Kw))
+                | (EcCurves::P384, KeyManagement(EcdhEs))
+                | (EcCurves::P384, KeyManagement(EcdhEsA128Kw))
+                | (EcCurves::P384, KeyManagement(EcdhEsA192Kw))
+                | (EcCurves::P384, KeyManagement(EcdhEsA256Kw))
+                | (EcCurves::P521, KeyManagement(EcdhEs))
+                | (EcCurves::P521, KeyManagement(EcdhEsA128Kw))
+                | (EcCurves::P521, KeyManagement(EcdhEsA192Kw))
+                | (EcCurves::P521, KeyManagement(EcdhEsA256Kw))
         )
     }
 }
@@ -172,18 +169,18 @@ impl KeyInfo for Oct {
                 | (Signing(Hs384), 24..)
                 | (Signing(Hs512), 32..)
                 // Sealing algorithms (AES Key Wrap)
-                | (Sealing(A128Kw), 16..)
-                | (Sealing(A192Kw), 24..)
-                | (Sealing(A256Kw), 32..)
-                | (Sealing(A128GcmKw), 16..)
-                | (Sealing(A192GcmKw), 24..)
-                | (Sealing(A256GcmKw), 32..)
+                | (KeyManagement(A128Kw), 16..)
+                | (KeyManagement(A192Kw), 24..)
+                | (KeyManagement(A256Kw), 32..)
+                | (KeyManagement(A128GcmKw), 16..)
+                | (KeyManagement(A192GcmKw), 24..)
+                | (KeyManagement(A256GcmKw), 32..)
                 // Password-based encryption
-                | (Sealing(Pbes2Hs256A128Kw), 16..)
-                | (Sealing(Pbes2Hs384A192Kw), 24..)
-                | (Sealing(Pbes2Hs512A256Kw), 32..)
+                | (KeyManagement(Pbes2Hs256A128Kw), 16..)
+                | (KeyManagement(Pbes2Hs384A192Kw), 24..)
+                | (KeyManagement(Pbes2Hs512A256Kw), 32..)
                 // Direct key agreement (key is the CEK)
-                | (Sealing(Dir), 1..)
+                | (KeyManagement(Dir), 1..)
         )
     }
 }
@@ -207,14 +204,14 @@ impl KeyInfo for Okp {
                 | (OkpCurves::Ed448, Signing(EdDsa))
                 | (OkpCurves::Ed448, Signing(Ed448))
                 // Sealing algorithms (ECDH key agreement) - X25519/X448 are for ECDH only
-                | (OkpCurves::X25519, Sealing(EcdhEs))
-                | (OkpCurves::X25519, Sealing(EcdhEsA128Kw))
-                | (OkpCurves::X25519, Sealing(EcdhEsA192Kw))
-                | (OkpCurves::X25519, Sealing(EcdhEsA256Kw))
-                | (OkpCurves::X448, Sealing(EcdhEs))
-                | (OkpCurves::X448, Sealing(EcdhEsA128Kw))
-                | (OkpCurves::X448, Sealing(EcdhEsA192Kw))
-                | (OkpCurves::X448, Sealing(EcdhEsA256Kw))
+                | (OkpCurves::X25519, KeyManagement(EcdhEs))
+                | (OkpCurves::X25519, KeyManagement(EcdhEsA128Kw))
+                | (OkpCurves::X25519, KeyManagement(EcdhEsA192Kw))
+                | (OkpCurves::X25519, KeyManagement(EcdhEsA256Kw))
+                | (OkpCurves::X448, KeyManagement(EcdhEs))
+                | (OkpCurves::X448, KeyManagement(EcdhEsA128Kw))
+                | (OkpCurves::X448, KeyManagement(EcdhEsA192Kw))
+                | (OkpCurves::X448, KeyManagement(EcdhEsA256Kw))
         )
     }
 }
@@ -235,8 +232,8 @@ impl KeyInfo for Rsa {
                 | (Signing(Ps384), 24..)
                 | (Signing(Ps512), 32..)
                 // Sealing algorithms (RSA-OAEP)
-                | (Sealing(RsaOaep), 16..)
-                | (Sealing(RsaOaep256), 16..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
         )
     }
 }

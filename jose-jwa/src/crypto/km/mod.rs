@@ -1,21 +1,56 @@
-// SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
-//! Sealing (key management) algorithms for JWE "alg" header (RFC 7518 Section 4.1).
+//! JWE Key Management (Key Wrapping) Implementation
 //!
-//! These algorithms protect the Content Encryption Key (CEK).
+//! This module provides key wrapping/unwrapping functions for JWE "alg" algorithms
+//! (key wrapping, key encryption, key agreement) as defined in RFC 7518.
+//!
+//! CEK generation is handled by `Encryption::random_key()` in the `secret` module.
+//!
+//! The modules abstract:
+//! - Content encryption: The key IS the CEK, encrypts content directly
+//! - Key wrap: The wrapping key protects the generated/derived CEK
 
+#![cfg(any(
+    feature = "aes-gcm",
+    feature = "aes-kw",
+    feature = "ecdh",
+    feature = "pbes2",
+    feature = "rsa",
+))]
+
+#[cfg(feature = "aes-gcm")]
+mod aes_gcm_kw;
+#[cfg(feature = "aes-kw")]
+mod aes_kw;
+#[cfg(feature = "ecdh")]
+mod ecdh;
+#[cfg(feature = "pbes2")]
+mod pbes2;
+#[cfg(feature = "rsa")]
+mod rsa_oaep;
+
+#[cfg(feature = "aes-gcm")]
+pub use aes_gcm_kw::*;
+#[cfg(feature = "aes-kw")]
+pub use aes_kw::*;
+#[cfg(feature = "ecdh")]
+pub use ecdh::*;
+#[cfg(feature = "pbes2")]
+pub use pbes2::*;
+#[cfg(feature = "rsa")]
+pub use rsa_oaep::*;
+
+use alloc::vec::Vec;
 use core::fmt;
-
 use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Sealing (key management) algorithms for JWE "alg" header (RFC 7518 Section 4.1).
+/// Key management modes for JWE "alg" header (RFC 7518 Section 4.1).
 ///
-/// These algorithms protect the Content Encryption Key (CEK).
+/// These modes protect the Content Encryption Key (CEK).
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum Sealing {
+pub enum KeyManagement {
     /// RSAES-PKCS1-v1_5 (VULNERABLE - DO NOT USE IN PRODUCTION)
     ///
     /// SECURITY WARNING: This algorithm is vulnerable to Bleichenbacher's
@@ -87,7 +122,8 @@ pub enum Sealing {
 
     /// PBES2 with HMAC SHA-256 and A128KW (Optional)
     ///
-    /// SECURITY: Iteration count (`p2c`) MUST be >= 1000, SHOULD be >= 10000.
+    /// SECURITY: A minimum iteration count (`p2c`) of 1000 is RECOMMENDED per RFC 7518,
+    /// and SHOULD be >= 10000 for production use.
     #[serde(rename = "PBES2-HS256+A128KW")]
     Pbes2Hs256A128Kw,
 
@@ -100,7 +136,7 @@ pub enum Sealing {
     Pbes2Hs512A256Kw,
 }
 
-impl Sealing {
+impl KeyManagement {
     /// Returns the string representation of this sealing algorithm.
     pub fn as_str(&self) -> &str {
         match self {
@@ -127,53 +163,36 @@ impl Sealing {
     }
 }
 
-impl fmt::Display for Sealing {
+impl fmt::Display for KeyManagement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    extern crate std;
+/// Result of a key wrapping operation
+///
+/// Uses #[derive(Zeroize, ZeroizeOnDrop)] instead of Zeroizing wrapper
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct WrappedKey {
+    /// The encrypted Content Encryption Key (None for direct modes like "dir")
+    pub encrypted_key: Option<Vec<u8>>,
+    /// 96-bit IV for AES-GCM key wrap algorithms
+    pub iv: Option<Vec<u8>>,
+    /// 128-bit authentication tag for AES-GCM key wrap algorithms
+    pub tag: Option<Vec<u8>>,
+    /// Salt input for PBES2 algorithms (p2s header parameter, generated during wrap)
+    pub salt: Option<Vec<u8>>,
+}
 
-    use std::prelude::rust_2021::*;
-    use std::vec;
-
-    use super::*;
-
-    #[test]
-    fn sealing_roundtrip() {
-        use Sealing::*;
-
-        let input = vec![
-            RsaOaep,
-            RsaOaep256,
-            A128Kw,
-            A192Kw,
-            A256Kw,
-            Dir,
-            EcdhEs,
-            EcdhEsA128Kw,
-            EcdhEsA192Kw,
-            EcdhEsA256Kw,
-            A128GcmKw,
-            A192GcmKw,
-            A256GcmKw,
-            Pbes2Hs256A128Kw,
-            Pbes2Hs384A192Kw,
-            Pbes2Hs512A256Kw,
-        ];
-        let ser = serde_json::to_string(&input).expect("serialization failed");
-
-        assert_eq!(
-            ser,
-            r#"["RSA-OAEP","RSA-OAEP-256","A128KW","A192KW","A256KW","dir","ECDH-ES","ECDH-ES+A128KW","ECDH-ES+A192KW","ECDH-ES+A256KW","A128GCMKW","A192GCMKW","A256GCMKW","PBES2-HS256+A128KW","PBES2-HS384+A192KW","PBES2-HS512+A256KW"]"#
-        );
-
-        assert_eq!(
-            serde_json::from_str::<Vec<Sealing>>(&ser).expect("deserialization failed"),
-            input
-        );
+/// Direct encryption - no wrapping needed
+///
+/// For "dir" algorithm, the shared key IS the CEK.
+/// Returns WrappedKey with encrypted_key: None.
+pub fn wrap_direct() -> WrappedKey {
+    WrappedKey {
+        encrypted_key: None,
+        iv: None,
+        tag: None,
+        salt: None,
     }
 }

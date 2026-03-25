@@ -9,7 +9,6 @@ RFC7516
 """
 documentation = "https://docs.rs/jose-jwe"
 homepage = "https://github.com/RustCrypto/JOSE/tree/master/jose-jwe"
-repository.workspace = true
 categories = ["cryptography", "data-structures", "encoding", "parser-implementations"]
 keywords = ["json", "jose", "jwe", "encryption"]
 readme = "README.md"
@@ -18,6 +17,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+crypto = ["aes-cbc-hmac", "aes-gcm"]
+aes-cbc-hmac = ["dep:aes"]
+aes-gcm = ["dep:aes-gcm", "cipher", "getrandom", "rand_core", "zeroize/alloc"]
+
 [dependencies]
 jose-b64 = { workspace = true }
 jose-jwa = { workspace = true }
@@ -25,8 +30,14 @@ jose-jwk = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
-
 zeroize = { workspace = true }
+
+# Optional crypto dependencies
+aes = { workspace = true, default-features = false, optional = true }
+aes-gcm = { workspace = true, default-features = false, optional = true, features = ["alloc"] }
+cipher = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+rand_core = { workspace = true, default-features = false, optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

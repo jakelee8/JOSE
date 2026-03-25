@@ -47,7 +47,7 @@ pub enum Encryption {
 
 impl Encryption {
     /// Returns the string representation of this encryption algorithm.
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             Self::A128CbcHs256 => "A128CBC-HS256",
             Self::A192CbcHs384 => "A192CBC-HS384",

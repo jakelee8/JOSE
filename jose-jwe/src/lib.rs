@@ -61,10 +61,6 @@ impl<U, P> From<Flattened<U, P>> for Jwe<U, P> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound(deserialize = "U: Deserialize<'de>, P: serde::de::DeserializeOwned"))]
 pub struct General<U = Unprotected, P = Protected<U>> {
-    /// The encrypted payload and associated cryptographic data.
-    #[serde(flatten)]
-    pub ciphertext: Ciphertext,
-
     /// The shared protected header
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protected: Option<Json<P>>,
@@ -73,6 +69,10 @@ pub struct General<U = Unprotected, P = Protected<U>> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unprotected: Option<U>,
 
+    /// The encrypted payload and associated cryptographic data.
+    #[serde(flatten)]
+    pub payload: Payload,
+
     /// The recipients
     pub recipients: Vec<Recipient<U>>,
 }
@@ -80,9 +80,9 @@ pub struct General<U = Unprotected, P = Protected<U>> {
 impl<U, P> From<Flattened<U, P>> for General<U, P> {
     fn from(value: Flattened<U, P>) -> Self {
         Self {
-            ciphertext: value.ciphertext,
             protected: value.protected,
             unprotected: value.unprotected,
+            payload: value.payload,
             recipients: vec![value.recipient],
         }
     }
@@ -94,10 +94,6 @@ impl<U, P> From<Flattened<U, P>> for General<U, P> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound(deserialize = "U: Deserialize<'de>, P: serde::de::DeserializeOwned"))]
 pub struct Flattened<U = Unprotected, P = Protected<U>> {
-    /// The encrypted payload and associated cryptographic data.
-    #[serde(flatten)]
-    pub ciphertext: Ciphertext,
-
     /// The protected header
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protected: Option<Json<P>>,
@@ -106,6 +102,10 @@ pub struct Flattened<U = Unprotected, P = Protected<U>> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unprotected: Option<U>,
 
+    /// The encrypted payload and associated cryptographic data.
+    #[serde(flatten)]
+    pub payload: Payload,
+
     /// The recipient information
     #[serde(flatten)]
     pub recipient: Recipient<U>,
@@ -113,22 +113,21 @@ pub struct Flattened<U = Unprotected, P = Protected<U>> {
 
 /// The encrypted payload returned by `Encryptor::finish()`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Ciphertext {
-    /// The encrypted payload
-    #[serde(rename = "ciphertext")]
-    pub bytes: Bytes,
-
+pub struct Payload {
     /// The initialization vector (for AES-GCM and AES-CBC)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iv: Option<Bytes>,
 
-    /// The authentication tag (for AES-GCM and AES-CBC+HS)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag: Option<Bytes>,
-
     /// Additional authenticated data that was processed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aad: Option<Bytes>,
+
+    /// The encrypted payload
+    pub ciphertext: Bytes,
+
+    /// The authentication tag (for AES-GCM and AES-CBC+HS)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<Bytes>,
 }
 
 /// A Recipient (RFC 7516 Section 7.2.1)
@@ -139,13 +138,13 @@ pub struct Ciphertext {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound(deserialize = "U: Deserialize<'de>"))]
 pub struct Recipient<U = Unprotected> {
-    /// The encrypted Content Encryption Key
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted_key: Option<Bytes>,
-
     /// The per-recipient unprotected header
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header: Option<U>,
+
+    /// The encrypted Content Encryption Key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_key: Option<Bytes>,
 }
 
 #[cfg(test)]
@@ -159,9 +158,9 @@ mod tests {
     #[test]
     fn flattened_roundtrip() {
         let original: Flattened<Unprotected, Protected<Unprotected>> = Flattened {
-            ciphertext: Ciphertext {
+            payload: Payload {
                 iv: Some(Bytes::from(vec![1, 2, 3, 4])),
-                bytes: Bytes::from(vec![5, 6, 7, 8]),
+                ciphertext: Bytes::from(vec![5, 6, 7, 8]),
                 tag: Some(Bytes::from(vec![9, 10, 11, 12])),
                 aad: None,
             },
@@ -176,17 +175,17 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialization failed");
         let deserialized: Flattened = serde_json::from_str(&json).expect("deserialization failed");
 
-        assert_eq!(original.ciphertext.bytes, deserialized.ciphertext.bytes);
-        assert_eq!(original.ciphertext.iv, deserialized.ciphertext.iv);
-        assert_eq!(original.ciphertext.tag, deserialized.ciphertext.tag);
+        assert_eq!(original.payload.ciphertext, deserialized.payload.ciphertext);
+        assert_eq!(original.payload.iv, deserialized.payload.iv);
+        assert_eq!(original.payload.tag, deserialized.payload.tag);
     }
 
     #[test]
     fn general_roundtrip() {
         let original: General<Unprotected, Protected<Unprotected>> = General {
-            ciphertext: Ciphertext {
+            payload: Payload {
                 iv: Some(Bytes::from(vec![1, 2, 3, 4])),
-                bytes: Bytes::from(vec![5, 6, 7, 8]),
+                ciphertext: Bytes::from(vec![5, 6, 7, 8]),
                 tag: Some(Bytes::from(vec![9, 10, 11, 12])),
                 aad: None,
             },
@@ -201,16 +200,16 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialization failed");
         let deserialized: General = serde_json::from_str(&json).expect("deserialization failed");
 
-        assert_eq!(original.ciphertext.bytes, deserialized.ciphertext.bytes);
+        assert_eq!(original.payload.ciphertext, deserialized.payload.ciphertext);
         assert_eq!(original.recipients.len(), deserialized.recipients.len());
     }
 
     #[test]
     fn flattened_to_general() {
         let flattened = Flattened {
-            ciphertext: Ciphertext {
+            payload: Payload {
                 iv: Some(Bytes::from(vec![1, 2, 3, 4])),
-                bytes: Bytes::from(vec![5, 6, 7, 8]),
+                ciphertext: Bytes::from(vec![5, 6, 7, 8]),
                 tag: Some(Bytes::from(vec![9, 10, 11, 12])),
                 aad: None,
             },
@@ -224,15 +223,15 @@ mod tests {
 
         let general: General = flattened.into();
         assert_eq!(general.recipients.len(), 1);
-        assert_eq!(general.ciphertext.bytes, Bytes::from(vec![5, 6, 7, 8]));
+        assert_eq!(general.payload.ciphertext, Bytes::from(vec![5, 6, 7, 8]));
     }
 
     #[test]
     fn jwe_enum_roundtrip() {
         let flattened = Flattened {
-            ciphertext: Ciphertext {
+            payload: Payload {
                 iv: Some(Bytes::from(vec![1, 2, 3, 4])),
-                bytes: Bytes::from(vec![5, 6, 7, 8]),
+                ciphertext: Bytes::from(vec![5, 6, 7, 8]),
                 tag: Some(Bytes::from(vec![9, 10, 11, 12])),
                 aad: None,
             },
@@ -251,7 +250,7 @@ mod tests {
         // Verify we got back a Flattened variant
         match deserialized {
             Jwe::Flattened(f) => {
-                assert_eq!(f.ciphertext.bytes, Bytes::from(vec![5, 6, 7, 8]));
+                assert_eq!(f.payload.ciphertext, Bytes::from(vec![5, 6, 7, 8]));
             }
             _ => core::panic!("Expected Flattened variant"),
         }
@@ -261,9 +260,9 @@ mod tests {
     fn compact_serialization_roundtrip() {
         // Create a JWE with minimal fields
         let original: Flattened = Flattened {
-            ciphertext: Ciphertext {
+            payload: Payload {
                 iv: Some(Bytes::from(vec![1, 2, 3, 4])),
-                bytes: Bytes::from(vec![5, 6, 7, 8]),
+                ciphertext: Bytes::from(vec![5, 6, 7, 8]),
                 tag: Some(Bytes::from(vec![9, 10, 11, 12])),
                 aad: None,
             },
@@ -304,13 +303,13 @@ mod tests {
 
         let flattened = result.unwrap();
         assert!(flattened.protected.is_some());
-        assert_eq!(flattened.ciphertext.bytes.as_ref(), b"cipher");
+        assert_eq!(flattened.payload.ciphertext.as_ref(), b"cipher");
         assert_eq!(
-            flattened.ciphertext.iv.as_ref().map(|b| b.as_ref()),
+            flattened.payload.iv.as_ref().map(|b| b.as_ref()),
             Some(&b"testiv"[..])
         );
         assert_eq!(
-            flattened.ciphertext.tag.as_ref().map(|b| b.as_ref()),
+            flattened.payload.tag.as_ref().map(|b| b.as_ref()),
             Some(&b"tag"[..])
         );
         assert_eq!(

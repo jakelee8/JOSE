@@ -20,15 +20,18 @@ rust-version.workspace = true
 
 [features]
 default = []
-crypto = ["aes-gcm", "aes-kw", "hmac", "p256", "p384", "p521", "k256", "rsa"]
+crypto = ["aes-cbc-hmac", "aes-gcm", "hmac", "p256", "p384", "p521", "k256", "rsa"]
 
-aes-gcm = ["dep:aes-gcm", "dep:rand_core", "dep:getrandom", "zeroize/alloc", "dep:jose-b64"]
-
-hmac = ["dep:hmac", "digest", "ecdsa", "elliptic-curve", "dep:jose-b64", "sha2", "signature"]
-k256 = ["dep:k256", "digest", "ecdsa", "elliptic-curve", "dep:jose-b64", "sha2", "signature"]
-p256 = ["dep:p256", "digest", "ecdsa", "elliptic-curve", "dep:jose-b64", "sha2", "signature"]
-p384 = ["dep:p384", "digest", "ecdsa", "elliptic-curve", "dep:jose-b64", "sha2", "signature"]
-p521 = ["dep:p521", "digest", "ecdsa", "elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+aes-cbc-hmac = ["dep:aes", "cbc", "hmac", "dep:jose-b64", "rand_core", "sha2", "subtle", "zeroize/alloc"]
+aes-gcm = ["dep:aes-gcm", "dep:jose-b64", "rand_core", "zeroize/alloc"]
+aes-kw = ["dep:aes", "dep:aes-gcm", "dep:aes-kw", "digest"]
+ecdh = ["dep:aes-kw", "dep:elliptic-curve", "dep:p256", "dep:p384", "dep:p521", "sha2", "digest"]
+hmac = ["dep:hmac", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+k256 = ["dep:k256", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+p256 = ["dep:p256", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+p384 = ["dep:p384", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+p521 = ["dep:p521", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "signature"]
+pbes2 = ["aes-kw", "dep:hmac", "dep:pbkdf2", "rand_core", "sha2"]
 rsa = ["dep:rsa", "digest", "dep:jose-b64", "sha1", "sha2", "signature"]
 
 # Include legacy/vulnerable algorithms (not recommended for production)
@@ -37,26 +40,29 @@ legacy-rsa1_5 = []
 
 [dependencies]
 serde = { workspace = true }
+zeroize = { workspace = true, default-features = false, features = ["alloc", "derive"] }
 
 # optional dependencies
+aes = { workspace = true, default-features = false, optional = true }
 aes-gcm = { workspace = true, default-features = false, optional = true, features = ["alloc"] }
-getrandom = { workspace = true, optional = true }
-rand_core = { workspace = true, default-features = false, optional = true }
 aes-kw = { workspace = true, default-features = false, optional = true }
+cbc = { workspace = true, default-features = false, optional = true, features = ["alloc", "block-padding"] }
 digest = { workspace = true, default-features = false, optional = true }
 ecdsa = { workspace = true, default-features = false, optional = true, features = ["digest"] }
-elliptic-curve = { workspace = true, default-features = false, optional = true }
+elliptic-curve = { workspace = true, default-features = false, optional = true, features = ["ecdh"] }
 hmac = { workspace = true, default-features = false, optional = true }
 jose-b64 = { workspace = true, optional = true }
 k256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
 p256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
 p384 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
 p521 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
+rand_core = { workspace = true, default-features = false, optional = true }
 rsa = { workspace = true, default-features = false, optional = true, features = ["getrandom", "hazmat"] }
 sha1 = { workspace = true, default-features = false, optional = true }
 sha2 = { workspace = true, default-features = false, optional = true }
 signature = { workspace = true, default-features = false, optional = true }
-zeroize = { workspace = true, default-features = false, features = ["alloc"] }
+pbkdf2 = { workspace = true, default-features = false, optional = true, features = ["hmac"] }
+subtle = { workspace = true, default-features = false, optional = true }
 
 [dev-dependencies]
 getrandom = { workspace = true }

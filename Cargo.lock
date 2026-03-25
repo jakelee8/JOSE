@@ -92,6 +92,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-padding"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "710f1dd022ef4e93f8a438b4ba958de7f64308434fa6a87104481645cc30068b"
+dependencies = [
+ "hybrid-array",
+]
+
+[[package]]
+name = "cbc"
+version = "0.2.0-rc.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab1412b9ae2463ede01f1e591412dfbcfeacecf40e8c4c3e0655814c19065c38"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -261,6 +279,7 @@ dependencies = [
  "crypto-common",
  "digest",
  "hex-literal",
+ "hkdf",
  "hybrid-array",
  "pem-rfc7468",
  "pkcs8",
@@ -348,6 +367,15 @@ name = "hex-literal"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
+
+[[package]]
+name = "hkdf"
+version = "0.13.0-rc.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbb55385998ae66b8d2d5143c05c94b9025ab863966f0c94ce7a5fde30105092"
+dependencies = [
+ "hmac",
+]
 
 [[package]]
 name = "hmac"
@@ -495,6 +523,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4250ce6452e92010fdf7268ccc5d14faa80bb12fc741938534c58f16804e03c7"
 dependencies = [
+ "block-padding",
  "hybrid-array",
 ]
 
@@ -519,8 +548,10 @@ dependencies = [
 name = "jose-jwa"
 version = "0.2.0-pre"
 dependencies = [
+ "aes",
  "aes-gcm",
  "aes-kw",
+ "cbc",
  "digest",
  "ecdsa",
  "elliptic-curve",
@@ -531,6 +562,7 @@ dependencies = [
  "p256",
  "p384",
  "p521",
+ "pbkdf2",
  "rand_core",
  "rsa",
  "serde",
@@ -538,6 +570,7 @@ dependencies = [
  "sha1",
  "sha2",
  "signature",
+ "subtle",
  "zeroize",
 ]
 
@@ -545,9 +578,14 @@ dependencies = [
 name = "jose-jwe"
 version = "0.2.0-pre"
 dependencies = [
+ "aes",
+ "aes-gcm",
+ "cipher",
+ "getrandom",
  "jose-b64",
  "jose-jwa",
  "jose-jwk",
+ "rand_core",
  "serde",
  "serde_json",
  "zeroize",
@@ -707,6 +745,16 @@ dependencies = [
  "primefield",
  "primeorder",
  "sha2",
+]
+
+[[package]]
+name = "pbkdf2"
+version = "0.13.0-rc.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f24f3eb2f4471b1730d59e4b730b747939960a8c7eb0c33c5a9076f2d3dddea"
+dependencies = [
+ "digest",
+ "hmac",
 ]
 
 [[package]]
@@ -1283,6 +1331,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 dependencies = [
  "serde",
+ "zeroize_derive",
+]
+
+[[package]]
+name = "zeroize_derive"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

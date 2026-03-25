@@ -92,8 +92,8 @@ where
         };
 
         Ok(Self {
-            ciphertext: crate::Ciphertext {
-                bytes: ciphertext,
+            payload: crate::Payload {
+                ciphertext,
                 iv,
                 tag,
                 aad: None,
@@ -123,15 +123,15 @@ impl<U, P> Display for Flattened<U, P> {
             .map(|x| Base64UrlUnpadded::encode_string(x));
 
         let iv = self
-            .ciphertext
+            .payload
             .iv
             .as_ref()
             .map(|x| Base64UrlUnpadded::encode_string(x));
 
-        let ciphertext = Base64UrlUnpadded::encode_string(&self.ciphertext.bytes);
+        let ciphertext = Base64UrlUnpadded::encode_string(&self.payload.ciphertext);
 
         let tag = self
-            .ciphertext
+            .payload
             .tag
             .as_ref()
             .map(|x| Base64UrlUnpadded::encode_string(x));
