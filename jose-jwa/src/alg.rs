@@ -10,8 +10,15 @@ use serde::{Deserialize, Serialize};
     feature = "ecdh",
     feature = "pbes2"
 ))]
-use crate::KeyManagement;
 use crate::Signing;
+#[cfg(any(
+    feature = "aes-kw",
+    feature = "aes-gcm",
+    feature = "rsa",
+    feature = "ecdh",
+    feature = "pbes2"
+))]
+use crate::crypto::KeyManagement;
 
 /// Possible types of algorithms that can exist in an "alg" descriptor.
 ///

@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::CipherError;
+use crate::crypto::CipherError;
 
 /// ECDH-ES direct key agreement
 pub type EcdhEs = EcdhEsDirect;

@@ -25,7 +25,7 @@ pub mod rsa;
 
 // Re-export signing/verification key types
 #[cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
-pub use self::ecdsa::{EcdsaError, EcdsaSigningKey, EcdsaVerifyingKey};
+pub use self::ecdsa::{EcdsaCurveAlg, EcdsaSigningKey, EcdsaVerifyingKey};
 
 #[cfg(feature = "k256")]
 pub use self::ecdsa::{Es256KSigningKey, Es256KVerifyingKey};
@@ -36,14 +36,10 @@ pub use self::ecdsa::{Es384SigningKey, Es384VerifyingKey};
 #[cfg(feature = "p521")]
 pub use self::ecdsa::{Es512SigningKey, Es512VerifyingKey};
 #[cfg(feature = "hmac")]
-pub use self::hmac::{HmacError, HmacKey};
+pub use self::hmac::{HmacKey, HmacState};
 #[cfg(feature = "rsa")]
-pub use self::rsa::{RsaError, RsaSigningKey, RsaVerifyingKey};
+pub use self::rsa::{RsaSigningKey, RsaVerifyingKey};
 
 // Re-export encryption key types
 #[cfg(feature = "aes-gcm")]
-pub use self::aes_gcm::{Aes128GcmKey, Aes256GcmKey, AesGcmError, AesGcmKey};
-
-// Re-export key wrapping key types
-#[cfg(feature = "aes-kw")]
-pub use self::aes_kw::{Aes128KwKey, Aes192KwKey, Aes256KwKey, AesKwError, AesKwKey};
+pub use self::aes_gcm::{Aes128GcmKey, Aes256GcmKey, AesGcmKey};

@@ -4,21 +4,19 @@
 
 #![cfg(feature = "rsa")]
 
+use alloc::vec::Vec;
 use core::iter;
 use core::marker::PhantomData;
 
-use alloc::vec::Vec;
 use digest::{Digest, FixedOutputReset};
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::{CryptoRng, TryCryptoRng};
 use rsa::traits::{PaddingScheme, PrivateKeyParts, PublicKeyParts};
-use rsa::{BoxedUint, Oaep};
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{BoxedUint, Oaep, RsaPrivateKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 
-use crate::CipherError;
-use crate::crypto::km::{UnwrappingKey, WrappedKey, WrappingKey};
+use crate::crypto::{CipherError, UnwrappingKey, WrappedKey, WrappingKey};
 
 /// RSA-OAEP with SHA-1 public key type alias.
 pub type RsaOaepSha1PublicKey = RsaOaepPublicKey<Sha1>;

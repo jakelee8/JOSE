@@ -2,10 +2,10 @@ mod digest;
 #[cfg(feature = "ecdsa")]
 mod ecdsa;
 mod km;
-#[cfg(feature = "rsa")]
-mod rsa;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-mod secret;
+// #[cfg(feature = "rsa")]
+// mod rsa;
+// #[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
+// mod secret;
 #[cfg(any(
     feature = "hmac",
     feature = "p256",
@@ -44,18 +44,18 @@ use core::fmt;
 #[cfg(feature = "ecdsa")]
 pub use self::ecdsa::*;
 pub use self::key::*;
-#[cfg(any(
-    feature = "aes-kw",
-    feature = "aes-gcm",
-    feature = "rsa",
-    feature = "ecdh",
-    feature = "pbes2"
-))]
+// #[cfg(any(
+//     feature = "aes-kw",
+//     feature = "aes-gcm",
+//     feature = "rsa",
+//     feature = "ecdh",
+//     feature = "pbes2"
+// ))]
 pub use self::km::*;
-#[cfg(feature = "rsa")]
-pub use self::rsa::*;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-pub use self::secret::*;
+// #[cfg(feature = "rsa")]
+// pub use self::rsa::*;
+// #[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
+// pub use self::secret::*;
 #[cfg(any(
     feature = "hmac",
     feature = "p256",
@@ -108,6 +108,8 @@ impl fmt::Display for CipherError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Aead => f.write_str("AEAD error"),
+            Self::Sign => f.write_str("signing error"),
+            Self::Verify => f.write_str("verification failed"),
             Self::InvalidKey => f.write_str("invalid key"),
             Self::InvalidKeyLength => f.write_str("invalid key length"),
             Self::InvalidIvLength => f.write_str("invalid IV length"),

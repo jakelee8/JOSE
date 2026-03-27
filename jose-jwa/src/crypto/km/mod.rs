@@ -17,15 +17,10 @@
     feature = "rsa",
 ))]
 
-#[cfg(feature = "aes-gcm")]
 mod aes_gcm_kw;
-#[cfg(feature = "aes-kw")]
 mod aes_kw;
-#[cfg(feature = "ecdh")]
-mod ecdh;
-#[cfg(feature = "pbes2")]
+// mod ecdh;
 mod pbes2;
-#[cfg(feature = "rsa")]
 mod rsa_oaep;
 
 use core::fmt;
@@ -39,8 +34,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub use self::aes_gcm_kw::*;
 #[cfg(feature = "aes-kw")]
 pub use self::aes_kw::*;
-#[cfg(feature = "ecdh")]
-pub use self::ecdh::*;
+// #[cfg(feature = "ecdh")]
+// pub use self::ecdh::*;
 #[cfg(feature = "pbes2")]
 pub use self::pbes2::*;
 #[cfg(feature = "rsa")]

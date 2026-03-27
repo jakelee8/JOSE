@@ -39,7 +39,7 @@ use rand_core::TryCryptoRng;
 use sha2::{Sha256, Sha384, Sha512};
 
 use super::{AesKwKey, UnwrappingKey, WrappedKey, WrappingKey};
-use crate::CipherError;
+use crate::crypto::CipherError;
 
 /// PBES2-HS256+A128KW key type.
 pub type Pbes2Hs256A128Key = Pbes2Key<ConfigHs256A128>;

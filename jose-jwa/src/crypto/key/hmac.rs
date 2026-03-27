@@ -81,14 +81,9 @@ where
         }
     }
 
-    /// Export the key bytes.
-    pub fn as_bytes(&self) -> &Secret {
+    /// Return the key bytes (JWK `k` parameter).
+    pub fn k(&self) -> &Secret {
         &self.k
-    }
-
-    /// Export the key bytes.
-    pub fn to_bytes(&self) -> Secret {
-        self.k.clone()
     }
 }
 

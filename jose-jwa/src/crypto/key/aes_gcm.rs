@@ -175,7 +175,7 @@ impl DecryptingKey for AesGcmKey<32> {
         iv: impl AsRef<[u8]>,
     ) -> Result<Secret, Self::Error> {
         let cipher =
-            Aes256Gcm::new_from_slice(self.key.0.as_ref()).map_err(|_| AesGcmError::InvalidKey)?;
+            Aes256Gcm::new_from_slice(self.key.as_ref()).map_err(|_| AesGcmError::InvalidKey)?;
 
         let nonce = Nonce::from_slice(iv.as_ref());
         let tag_array = Tag::<<Aes256Gcm as AeadCore>::TagSize>::clone_from_slice(tag.as_ref());

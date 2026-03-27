@@ -16,7 +16,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::CipherError;
+use crate::crypto::CipherError;
 
 /// AES-128 Key Wrap key type alias.
 pub type AesKwKey128 = AesKwKey<Aes128>;
@@ -48,8 +48,8 @@ where
         Ok(key.into())
     }
 
-    /// Get the key material as a `Secret`.
-    pub fn oct(&self) -> &Secret {
+    /// Return the key bytes (JWK `k` parameter).
+    pub fn k(&self) -> &Secret {
         &self.oct
     }
 }
