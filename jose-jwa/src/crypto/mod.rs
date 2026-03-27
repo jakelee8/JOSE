@@ -1,11 +1,15 @@
-mod digest;
-#[cfg(feature = "ecdsa")]
-mod ecdsa;
+#[cfg(any(
+    feature = "aes-gcm",
+    feature = "aes-kw",
+    feature = "ecdh",
+    feature = "pbes2",
+    feature = "rsa"
+))]
 mod km;
 // #[cfg(feature = "rsa")]
 // mod rsa;
-// #[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-// mod secret;
+#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
+mod enc;
 #[cfg(any(
     feature = "hmac",
     feature = "p256",
@@ -41,21 +45,29 @@ pub mod key;
 use core::error::Error;
 use core::fmt;
 
-#[cfg(feature = "ecdsa")]
-pub use self::ecdsa::*;
+#[cfg(any(
+    feature = "hmac",
+    feature = "p256",
+    feature = "p384",
+    feature = "p521",
+    feature = "k256",
+    feature = "rsa",
+    feature = "aes-gcm",
+    feature = "aes-kw"
+))]
 pub use self::key::*;
-// #[cfg(any(
-//     feature = "aes-kw",
-//     feature = "aes-gcm",
-//     feature = "rsa",
-//     feature = "ecdh",
-//     feature = "pbes2"
-// ))]
+#[cfg(any(
+    feature = "aes-gcm",
+    feature = "aes-kw",
+    feature = "ecdh",
+    feature = "pbes2",
+    feature = "rsa"
+))]
 pub use self::km::*;
 // #[cfg(feature = "rsa")]
 // pub use self::rsa::*;
-// #[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-// pub use self::secret::*;
+#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
+pub use self::enc::*;
 #[cfg(any(
     feature = "hmac",
     feature = "p256",
@@ -80,7 +92,9 @@ pub use self::verify::*;
 pub enum CipherError {
     /// An error occurred during AEAD encryption/decryption.
     Aead,
+    /// An error occurred during signing.
     Sign,
+    /// Signature verification failed.
     Verify,
     /// The key is invalid or corrupted.
     InvalidKey,

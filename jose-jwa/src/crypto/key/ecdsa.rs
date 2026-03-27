@@ -10,12 +10,10 @@
 
 use alloc::vec::Vec;
 use core::convert::Infallible;
-use core::ops::Add;
 
 use digest::Digest;
 use ecdsa::hazmat::DigestAlgorithm;
 use ecdsa::{EcdsaCurve, Signature, SignatureSize};
-use ecdsa::{SigningKey as EcdsaSigningKeyCore, VerifyingKey as EcdsaVerifyingKeyCore};
 use elliptic_curve::array::ArraySize;
 use elliptic_curve::ops::Invert;
 use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
@@ -25,7 +23,30 @@ use jose_b64::serde::{Bytes, Secret};
 use signature::hazmat::{PrehashSigner, PrehashVerifier};
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey as VerifyingKeyTrait};
+use crate::crypto::{
+    CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey as VerifyingKeyTrait,
+};
+
+// Type aliases for common curves
+#[cfg(feature = "p256")]
+pub type Es256SigningKey = EcdsaSigningKey<p256::NistP256>;
+#[cfg(feature = "p256")]
+pub type Es256VerifyingKey = EcdsaVerifyingKey<p256::NistP256>;
+
+#[cfg(feature = "p384")]
+pub type Es384SigningKey = EcdsaSigningKey<p384::NistP384>;
+#[cfg(feature = "p384")]
+pub type Es384VerifyingKey = EcdsaVerifyingKey<p384::NistP384>;
+
+#[cfg(feature = "p521")]
+pub type Es512SigningKey = EcdsaSigningKey<p521::NistP521>;
+#[cfg(feature = "p521")]
+pub type Es512VerifyingKey = EcdsaVerifyingKey<p521::NistP521>;
+
+#[cfg(feature = "k256")]
+pub type Es256KSigningKey = EcdsaSigningKey<k256::Secp256k1>;
+#[cfg(feature = "k256")]
+pub type Es256KVerifyingKey = EcdsaVerifyingKey<k256::Secp256k1>;
 
 /// Trait for deriving the signing algorithm from the curve type at compile time.
 pub trait EcdsaCurveAlg {
@@ -61,9 +82,12 @@ impl EcdsaCurveAlg for k256::Secp256k1 {
     }
 }
 
-/// An ECDSA signing key.
+/// An ECDSA signing key for creating digital signatures.
+///
+/// This type wraps an ECDSA signing key and implements the [`SigningKey`] trait.
+/// It supports multiple curves including P-256, P-384, P-521, and secp256k1.
 pub struct EcdsaSigningKey<C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> {
-    key: EcdsaSigningKeyCore<C>,
+    key: ecdsa::SigningKey<C>,
 }
 
 impl<C> EcdsaSigningKey<C>
@@ -74,8 +98,8 @@ where
 {
     /// Create a signing key from raw scalar bytes (JWK `d` parameter).
     pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let key = EcdsaSigningKeyCore::<C>::from_slice(d.as_ref())
-            .map_err(|_| CipherError::InvalidKey)?;
+        let key =
+            ecdsa::SigningKey::<C>::from_slice(d.as_ref()).map_err(|_| CipherError::InvalidKey)?;
         Ok(Self { key })
     }
 
@@ -153,9 +177,12 @@ where
     }
 }
 
-/// An ECDSA verifying key.
+/// An ECDSA verifying key for verifying digital signatures.
+///
+/// This type wraps an ECDSA verifying key and implements the [`VerifyingKey`] trait.
+/// It supports multiple curves including P-256, P-384, P-521, and secp256k1.
 pub struct EcdsaVerifyingKey<C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> {
-    key: EcdsaVerifyingKeyCore<C>,
+    key: ecdsa::VerifyingKey<C>,
 }
 
 impl<C> EcdsaVerifyingKey<C>
@@ -166,7 +193,7 @@ where
 {
     /// Create a verifying key from SEC1-encoded point bytes.
     pub fn from_sec1_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let key = EcdsaVerifyingKeyCore::<C>::from_sec1_bytes(bytes.as_ref())
+        let key = ecdsa::VerifyingKey::<C>::from_sec1_bytes(bytes.as_ref())
             .map_err(|_| CipherError::InvalidKey)?;
         Ok(Self { key })
     }
@@ -179,13 +206,23 @@ where
     /// Return the x-coordinate (JWK `x` parameter).
     pub fn x(&self) -> Bytes {
         let point = self.key.to_sec1_point(false);
-        point.x().expect("uncompressed point").as_slice().to_vec().into()
+        point
+            .x()
+            .expect("uncompressed point")
+            .as_slice()
+            .to_vec()
+            .into()
     }
 
     /// Return the y-coordinate (JWK `y` parameter).
     pub fn y(&self) -> Bytes {
         let point = self.key.to_sec1_point(false);
-        point.y().expect("uncompressed point").as_slice().to_vec().into()
+        point
+            .y()
+            .expect("uncompressed point")
+            .as_slice()
+            .to_vec()
+            .into()
     }
 
     /// Export the public key as SEC1-encoded bytes.
@@ -223,10 +260,14 @@ where
     }
 }
 
-/// ECDSA signing state.
+/// ECDSA signing state for incremental signature creation.
+///
+/// This struct maintains the hash state during the signing process.
+/// Data is fed incrementally via the [`Update`] trait, and the signature
+/// is produced by calling [`Signer::finish`].
 pub struct EcdsaSigner<'a, C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> {
     digest: C::Digest,
-    key: &'a EcdsaSigningKeyCore<C>,
+    key: &'a ecdsa::SigningKey<C>,
 }
 
 impl<C> Update for EcdsaSigner<'_, C>
@@ -259,10 +300,14 @@ where
     }
 }
 
-/// ECDSA verification state.
+/// ECDSA verification state for incremental signature verification.
+///
+/// This struct maintains the hash state during the verification process.
+/// Data is fed incrementally via the [`Update`] trait, and the signature
+/// is verified by calling [`Verifier::finish`].
 pub struct EcdsaVerifier<'a, C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> {
     digest: C::Digest,
-    key: &'a EcdsaVerifyingKeyCore<C>,
+    key: &'a ecdsa::VerifyingKey<C>,
 }
 
 impl<C> Update for EcdsaVerifier<'_, C>
@@ -286,31 +331,10 @@ where
 
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error> {
         let hash = self.digest.finalize();
-        let sig = Signature::<C>::from_slice(signature.as_ref())
-            .map_err(|_| CipherError::InvalidKey)?;
+        let sig =
+            Signature::<C>::from_slice(signature.as_ref()).map_err(|_| CipherError::InvalidKey)?;
         self.key
             .verify_prehash(hash.as_ref(), &sig)
             .map_err(|_| CipherError::Verify)
     }
 }
-
-// Type aliases for common curves
-#[cfg(feature = "p256")]
-pub type Es256SigningKey = EcdsaSigningKey<p256::NistP256>;
-#[cfg(feature = "p256")]
-pub type Es256VerifyingKey = EcdsaVerifyingKey<p256::NistP256>;
-
-#[cfg(feature = "p384")]
-pub type Es384SigningKey = EcdsaSigningKey<p384::NistP384>;
-#[cfg(feature = "p384")]
-pub type Es384VerifyingKey = EcdsaVerifyingKey<p384::NistP384>;
-
-#[cfg(feature = "p521")]
-pub type Es512SigningKey = EcdsaSigningKey<p521::NistP521>;
-#[cfg(feature = "p521")]
-pub type Es512VerifyingKey = EcdsaVerifyingKey<p521::NistP521>;
-
-#[cfg(feature = "k256")]
-pub type Es256KSigningKey = EcdsaSigningKey<k256::Secp256k1>;
-#[cfg(feature = "k256")]
-pub type Es256KVerifyingKey = EcdsaVerifyingKey<k256::Secp256k1>;

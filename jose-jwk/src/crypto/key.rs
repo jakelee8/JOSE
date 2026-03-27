@@ -3,11 +3,49 @@
 
 use alloc::boxed::Box;
 
-use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey, RsaSigningKey, RsaVerifyingKey};
+use jose_jwa::crypto::{
+    EcdsaSigningKey, EcdsaVerifyingKey, Ps256SigningKey, Ps256VerifyingKey, Ps384SigningKey,
+    Ps384VerifyingKey, Ps512SigningKey, Ps512VerifyingKey, Rs256SigningKey, Rs256VerifyingKey,
+    Rs384SigningKey, Rs384VerifyingKey, Rs512SigningKey, Rs512VerifyingKey,
+};
 use jose_jwa::Algorithm;
 use zeroize::Zeroizing;
 
 use super::KeyInfo;
+
+/// RSA signing key enum wrapping all algorithm-specific types.
+#[cfg(feature = "rsa")]
+pub enum RsaSigningKey {
+    /// RS256 signing key
+    Rs256(Rs256SigningKey),
+    /// RS384 signing key
+    Rs384(Rs384SigningKey),
+    /// RS512 signing key
+    Rs512(Rs512SigningKey),
+    /// PS256 signing key
+    Ps256(Ps256SigningKey),
+    /// PS384 signing key
+    Ps384(Ps384SigningKey),
+    /// PS512 signing key
+    Ps512(Ps512SigningKey),
+}
+
+/// RSA verifying key enum wrapping all algorithm-specific types.
+#[cfg(feature = "rsa")]
+pub enum RsaVerifyingKey {
+    /// RS256 verifying key
+    Rs256(Rs256VerifyingKey),
+    /// RS384 verifying key
+    Rs384(Rs384VerifyingKey),
+    /// RS512 verifying key
+    Rs512(Rs512VerifyingKey),
+    /// PS256 verifying key
+    Ps256(Ps256VerifyingKey),
+    /// PS384 verifying key
+    Ps384(Ps384VerifyingKey),
+    /// PS512 verifying key
+    Ps512(Ps512VerifyingKey),
+}
 
 /// A fully parsed Key that mimics the runtime behavior of a JWK.
 ///

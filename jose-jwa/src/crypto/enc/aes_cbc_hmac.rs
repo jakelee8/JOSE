@@ -1,95 +1,166 @@
-//! AES-CBC with HMAC-SHA2 composite encryption.
-//!
-//! This module implements the composite authenticated encryption algorithm using
-//! AES-CBC for encryption and HMAC-SHA2 for authentication, as defined in
-//! [RFC 7518 Section 5.2.2](https://www.rfc-editor.org/rfc/rfc7518#section-5.2.2).
-//!
-//! The key is split into two parts:
-//! - First half: MAC key for HMAC computation
-//! - Second half: Encryption key for AES-CBC
-
 #![cfg(feature = "aes-cbc-hmac")]
 
-use alloc::vec;
-use alloc::vec::Vec;
+use core::marker::PhantomData;
 
+use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::{
     BlockCipherDecrypt, BlockCipherEncrypt, BlockModeEncrypt, KeyIvInit, KeySizeUser,
-    block_padding::Pkcs7,
 };
 use hmac::{EagerHash, Hmac, KeyInit, Mac};
+use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
-use sha2::Digest;
+use sha2::{Digest, Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
-use crate::{CipherError, Encrypted};
+use super::Encrypted;
+use crate::Encryption;
+use crate::crypto::{CipherError, DecryptingKey, EncryptingKey};
 
-/// Encrypts plaintext using AES-CBC with HMAC-SHA2 composite encryption.
+/// Type alias for A128CBC-HS256 keys (AES-128 with SHA-256).
+pub type Aes128CbcHmacSha256Key = AesCbcHmacKey<Aes128, Sha256>;
+
+/// Type alias for A192CBC-HS384 keys (AES-192 with SHA-384).
+pub type Aes192CbcHmacSha384Key = AesCbcHmacKey<Aes192, Sha384>;
+
+/// Type alias for A256CBC-HS512 keys (AES-256 with SHA-512).
+pub type Aes256CbcHmacSha512Key = AesCbcHmacKey<Aes256, Sha512>;
+
+/// An AES-CBC with HMAC-SHA2 content encryption key.
+///
+/// This type wraps a composite key (MAC key || ENC key) and implements
+/// [`EncryptingKey`] and [`DecryptingKey`] for JWE content encryption.
 ///
 /// # Type Parameters
-///
-/// * `Aes` - The AES variant (e.g., `Aes128`, `Aes192`, `Aes256`)
-/// * `D` - The hash digest algorithm for HMAC (e.g., `Sha256`, `Sha384`, `Sha512`)
-///
-/// # Arguments
-///
-/// * `rng` - A cryptographically secure random number generator for IV generation
-/// * `key` - The composite key (must be twice the AES key size: first half for MAC, second half for encryption)
-/// * `plaintext` - The data to encrypt
-/// * `aad` - Additional authenticated data that is integrity-protected but not encrypted
-///
-/// # Returns
-///
-/// Returns `Ok(Encrypted)` containing the ciphertext, IV, and authentication tag.
-pub fn aes_cbc_hmac_encrypt<Aes, D>(
-    rng: &mut impl TryCryptoRng,
-    plaintext: impl AsRef<[u8]>,
-    aad: impl AsRef<[u8]>,
-) -> Result<Encrypted, CipherError>
+/// * `A` - The AES variant (e.g., `Aes128`, `Aes192`, `Aes256`)
+/// * `H` - The hash algorithm for HMAC (e.g., `Sha256`, `Sha384`, `Sha512`)
+pub struct AesCbcHmacKey<A, H> {
+    k: Secret,
+    _alg: PhantomData<(A, H)>,
+}
+
+use aes::{Aes128, Aes192, Aes256};
+
+impl<A, D> AesCbcHmacKey<A, D>
 where
-    Aes: KeyInit + KeySizeUser + BlockCipherEncrypt,
+    A: KeySizeUser,
     D: EagerHash,
-    Hmac<D>: Mac,
 {
-    // MAC_KEY = initial MAC_KEY_LEN octets of K
-    let mac_key_len = Aes::key_size();
-    // ENC_KEY = final ENC_KEY_LEN octets of K
-    let enc_key_len = mac_key_len;
+    /// Create an AES-CBC-HMAC key from raw bytes.
+    ///
+    /// # Arguments
+    /// * `k` - The composite key bytes (must be twice the AES key size:
+    ///   first half for MAC, second half for encryption)
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+        let expected_len = A::key_size() * 2;
+        if k.as_ref().len() != expected_len {
+            return Err(CipherError::InvalidKeyLength);
+        }
 
-    // Composite key: MAC key || ENC key, each is key_size bytes
-    let mut cek = vec![0u8; mac_key_len + enc_key_len];
-    rng.try_fill_bytes(&mut cek).map_err(|_| CipherError::Rng)?;
+        Ok(Self {
+            k: Secret::from(k.as_ref().to_vec()),
+            _alg: PhantomData,
+        })
+    }
 
-    let mac_key = &cek[..mac_key_len];
-    let enc_key = &cek[mac_key_len..];
+    /// Generate a random key.
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+        let mut k = alloc::vec![0u8; A::key_size() * 2];
+        rng.try_fill_bytes(&mut k).map_err(|_| CipherError::Rng)?;
+        Self::from_bytes(k)
+    }
 
-    let mut iv = [0u8; 16];
-    rng.try_fill_bytes(&mut iv).map_err(|_| CipherError::Rng)?;
+    /// Get the encryption algorithm.
+    pub fn alg(&self) -> Encryption
+    where
+        A: KeySizeUser,
+    {
+        match (A::key_size(), <D as Digest>::output_size()) {
+            (16, 32) => Encryption::A128CbcHs256,
+            (24, 48) => Encryption::A192CbcHs384,
+            (32, 64) => Encryption::A256CbcHs512,
+            _ => unreachable!("unsupported key size"),
+        }
+    }
 
-    // E = CBC-PKCS7-ENC(ENC_KEY, P),
-    let encryptor = cbc::Encryptor::<Aes>::new_from_slices(enc_key, iv.as_ref())?;
-    let ciphertext = encryptor.encrypt_padded_vec::<Pkcs7>(plaintext.as_ref());
+    /// Return the key bytes (JWK `k` parameter).
+    pub fn k(&self) -> &Secret {
+        &self.k
+    }
+}
 
-    let al: u64 = (aad.as_ref().len() as u64) * 8;
+impl<A, D> EncryptingKey for AesCbcHmacKey<A, D>
+where
+    A: BlockCipherEncrypt + KeyInit,
+    D: EagerHash,
+    Hmac<D>: Mac + KeyInit,
+{
+    type Error = CipherError;
 
-    // M = MAC(MAC_KEY, A || IV || E || AL),
-    let mut hmac = Hmac::<D>::new_from_slice(mac_key)?;
-    hmac.update(aad.as_ref());
-    hmac.update(iv.as_ref());
-    hmac.update(&ciphertext);
-    hmac.update(&al.to_be_bytes());
-    let m = hmac.finalize();
+    fn encrypt(
+        &self,
+        rng: &mut impl TryCryptoRng,
+        plaintext: impl AsRef<[u8]>,
+        aad: impl AsRef<[u8]>,
+    ) -> Result<Encrypted, Self::Error> {
+        // MAC_KEY = initial MAC_KEY_LEN octets of K
+        let mac_key_len = A::key_size();
+        // ENC_KEY = final ENC_KEY_LEN octets of K
+        let enc_key_len = mac_key_len;
 
-    // T = initial T_LEN octets of M.
-    let tag_len = mac_key_len;
-    let tag = m.as_bytes()[..tag_len].to_vec();
+        let key = self.k.as_ref();
+        if key.len() != mac_key_len + enc_key_len {
+            return Err(CipherError::InvalidKeyLength);
+        }
 
-    Ok(Encrypted {
-        ciphertext,
-        cek,
-        iv: iv.to_vec(),
-        tag,
-    })
+        let mac_key = &key[..mac_key_len];
+        let enc_key = &key[mac_key_len..];
+
+        let mut iv = [0u8; 16];
+        rng.try_fill_bytes(&mut iv).map_err(|_| CipherError::Rng)?;
+
+        // E = CBC-PKCS7-ENC(ENC_KEY, P),
+        let encryptor = cbc::Encryptor::<A>::new_from_slices(enc_key, iv.as_ref())?;
+        let ciphertext = encryptor.encrypt_padded_vec::<Pkcs7>(plaintext.as_ref());
+
+        let al: u64 = (aad.as_ref().len() as u64) * 8;
+
+        // M = MAC(MAC_KEY, A || IV || E || AL),
+        let mut hmac = Hmac::<D>::new_from_slice(mac_key)?;
+        hmac.update(aad.as_ref());
+        hmac.update(iv.as_ref());
+        hmac.update(&ciphertext);
+        hmac.update(&al.to_be_bytes());
+        let m = hmac.finalize();
+
+        // T = initial T_LEN octets of M.
+        let tag_len = mac_key_len;
+        let tag = m.as_bytes()[..tag_len].to_vec();
+
+        Ok(Encrypted {
+            ciphertext: ciphertext.into(),
+            iv: iv.to_vec().into(),
+            tag: tag.into(),
+        })
+    }
+}
+
+impl<A, D> DecryptingKey for AesCbcHmacKey<A, D>
+where
+    A: BlockCipherDecrypt + KeyInit,
+    D: EagerHash,
+    Hmac<D>: Mac + KeyInit,
+{
+    type Error = CipherError;
+
+    fn decrypt(
+        &self,
+        ciphertext: impl AsRef<[u8]>,
+        aad: impl AsRef<[u8]>,
+        tag: impl AsRef<[u8]>,
+        iv: impl AsRef<[u8]>,
+    ) -> Result<Secret, Self::Error> {
+        aes_cbc_hmac_decrypt::<A, D>(self.k.as_ref(), ciphertext, aad, tag, iv).map(Secret::from)
+    }
 }
 
 /// Decrypts ciphertext using AES-CBC with HMAC-SHA2 composite decryption.
@@ -120,7 +191,7 @@ pub fn aes_cbc_hmac_decrypt<Aes, D>(
     aad: impl AsRef<[u8]>,
     tag: impl AsRef<[u8]>,
     iv: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError>
+) -> Result<Secret, CipherError>
 where
     Aes: KeyInit + KeySizeUser + BlockCipherDecrypt,
     cbc::Decryptor<Aes>: KeyIvInit,
@@ -179,7 +250,7 @@ where
         .decrypt_padded_vec::<Pkcs7>(ciphertext)
         .map_err(|_| CipherError::Aead)?;
 
-    Ok(plaintext)
+    Ok(plaintext.into())
 }
 
 #[cfg(test)]
@@ -192,6 +263,7 @@ mod tests {
 
     use super::*;
     use aes::{Aes128, Aes192, Aes256};
+    use alloc::vec::Vec;
     use sha2::{Sha256, Sha384, Sha512};
 
     /// Test vectors from RFC 7518 Appendix B.1.
@@ -257,15 +329,22 @@ mod tests {
 
         // Test encryption by comparing against expected values
         // We need to use a mock RNG that returns the fixed IV
-        let mut buf = k.to_vec();
-        buf.extend_from_slice(&iv);
-        let mut mock_rng = FixedRng::new(buf);
-        let encrypted = aes_cbc_hmac_encrypt::<Aes128, Sha256>(&mut mock_rng, &p, &a).unwrap();
+        let mut mock_rng = FixedRng::new(iv.to_vec());
+        let encryptor = Aes128CbcHmacSha256Key::from_bytes(&k).unwrap();
+        let encrypted = encryptor.encrypt(&mut mock_rng, &p, &a).unwrap();
 
         // First check ciphertext
-        assert_eq!(encrypted.ciphertext, expected_e, "Ciphertext mismatch");
-        assert_eq!(encrypted.iv, iv, "IV mismatch");
-        assert_eq!(encrypted.tag, expected_t, "Tag mismatch");
+        assert_eq!(
+            encrypted.ciphertext.as_ref(),
+            expected_e.as_slice(),
+            "Ciphertext mismatch"
+        );
+        assert_eq!(encrypted.iv.as_ref(), iv.as_slice(), "IV mismatch");
+        assert_eq!(
+            encrypted.tag.as_ref(),
+            expected_t.as_slice(),
+            "Tag mismatch"
+        );
 
         // Test decryption
         let decrypted = aes_cbc_hmac_decrypt::<Aes128, Sha256>(
@@ -277,7 +356,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(decrypted, p, "Decrypted plaintext mismatch");
+        assert_eq!(
+            decrypted.as_ref(),
+            p.as_ref(),
+            "Decrypted plaintext mismatch"
+        );
     }
 
     /// Test vectors from RFC 7518 Appendix B.2.
@@ -343,14 +426,22 @@ mod tests {
         ];
 
         // Test encryption
-        let mut buf = k.to_vec();
-        buf.extend_from_slice(&iv);
-        let mut mock_rng = FixedRng::new(buf);
-        let encrypted = aes_cbc_hmac_encrypt::<Aes192, Sha384>(&mut mock_rng, &p, &a).unwrap();
+        let mut mock_rng = FixedRng::new(iv.to_vec());
+        let encryptor: AesCbcHmacKey<Aes192, Sha384> =
+            Aes192CbcHmacSha384Key::from_bytes(&k).unwrap();
+        let encrypted = encryptor.encrypt(&mut mock_rng, &p, &a).unwrap();
 
-        assert_eq!(encrypted.ciphertext, expected_e, "Ciphertext mismatch");
-        assert_eq!(encrypted.iv, iv, "IV mismatch");
-        assert_eq!(encrypted.tag, expected_t, "Tag mismatch");
+        assert_eq!(
+            encrypted.ciphertext.as_ref(),
+            expected_e.as_slice(),
+            "Ciphertext mismatch"
+        );
+        assert_eq!(encrypted.iv.as_ref(), iv.as_slice(), "IV mismatch");
+        assert_eq!(
+            encrypted.tag.as_ref(),
+            expected_t.as_slice(),
+            "Tag mismatch"
+        );
 
         // Test decryption
         let decrypted = aes_cbc_hmac_decrypt::<Aes192, Sha384>(
@@ -362,7 +453,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(decrypted, p, "Decrypted plaintext mismatch");
+        assert_eq!(
+            decrypted.as_ref(),
+            p.as_ref(),
+            "Decrypted plaintext mismatch"
+        );
     }
 
     /// Test vectors from RFC 7518 Appendix B.3.
@@ -430,14 +525,22 @@ mod tests {
         ];
 
         // Test encryption
-        let mut buf = k.to_vec();
-        buf.extend_from_slice(&iv);
-        let mut mock_rng = FixedRng::new(buf);
-        let encrypted = aes_cbc_hmac_encrypt::<Aes256, Sha512>(&mut mock_rng, &p, &a).unwrap();
+        let mut mock_rng = FixedRng::new(iv.to_vec());
+        let encryptor: AesCbcHmacKey<Aes256, Sha512> =
+            Aes256CbcHmacSha512Key::from_bytes(&k).unwrap();
+        let encrypted = encryptor.encrypt(&mut mock_rng, &p, &a).unwrap();
 
-        assert_eq!(encrypted.ciphertext, expected_e, "Ciphertext mismatch");
-        assert_eq!(encrypted.iv, iv, "IV mismatch");
-        assert_eq!(encrypted.tag, expected_t, "Tag mismatch");
+        assert_eq!(
+            encrypted.ciphertext.as_ref(),
+            expected_e.as_slice(),
+            "Ciphertext mismatch"
+        );
+        assert_eq!(encrypted.iv.as_ref(), iv.as_slice(), "IV mismatch");
+        assert_eq!(
+            encrypted.tag.as_ref(),
+            expected_t.as_slice(),
+            "Tag mismatch"
+        );
 
         // Test decryption
         let decrypted = aes_cbc_hmac_decrypt::<Aes256, Sha512>(
@@ -449,7 +552,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(decrypted, p, "Decrypted plaintext mismatch");
+        assert_eq!(
+            decrypted.as_ref(),
+            p.as_ref(),
+            "Decrypted plaintext mismatch"
+        );
     }
 
     /// Mock RNG that returns a fixed value for testing

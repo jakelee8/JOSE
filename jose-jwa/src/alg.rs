@@ -4,11 +4,12 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(
-    feature = "aes-kw",
-    feature = "aes-gcm",
-    feature = "rsa",
-    feature = "ecdh",
-    feature = "pbes2"
+    feature = "hmac",
+    feature = "p256",
+    feature = "p384",
+    feature = "p521",
+    feature = "k256",
+    feature = "rsa"
 ))]
 use crate::Signing;
 #[cfg(any(
@@ -26,11 +27,18 @@ use crate::crypto::KeyManagement;
 /// - Signing algorithms: key signs/verifies data
 /// - Key management modes: key encrypts/decrypts data
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(missing_docs)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum Algorithm {
     /// Algorithms used for digital signatures and MACs (RFC 7518 Section 3.1)
+    #[cfg(any(
+        feature = "hmac",
+        feature = "p256",
+        feature = "p384",
+        feature = "p521",
+        feature = "k256",
+        feature = "rsa"
+    ))]
     Signing(Signing),
     /// Algorithms used for key management (RFC 7518 Section 4.1)
     #[cfg(any(
@@ -43,6 +51,14 @@ pub enum Algorithm {
     KeyManagement(KeyManagement),
 }
 
+#[cfg(any(
+    feature = "hmac",
+    feature = "p256",
+    feature = "p384",
+    feature = "p521",
+    feature = "k256",
+    feature = "rsa"
+))]
 impl From<Signing> for Algorithm {
     #[inline]
     fn from(alg: Signing) -> Self {

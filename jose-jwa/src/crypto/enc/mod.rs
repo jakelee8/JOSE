@@ -9,22 +9,17 @@
 #![cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 
 #[cfg(feature = "aes-cbc-hmac")]
-mod aes_cbc_hmac;
+pub mod aes_cbc_hmac;
 #[cfg(feature = "aes-gcm")]
-mod aes_gcm;
-mod enc;
+pub mod aes_gcm;
 
-use alloc::vec::Vec;
 use core::error::Error;
 use jose_b64::serde::{Bytes, Secret};
 
 use rand_core::TryCryptoRng;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use super::CipherError;
-
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-pub use self::enc::*;
 
 /// Trait for keys that can encrypt content.
 ///
@@ -46,7 +41,7 @@ pub trait EncryptingKey {
     /// Returns `Ok(Encrypted)` containing ciphertext, IV, and authentication tag.
     fn encrypt(
         &self,
-        rng: impl TryCryptoRng,
+        rng: &mut impl TryCryptoRng,
         plaintext: impl AsRef<[u8]>,
         aad: impl AsRef<[u8]>,
     ) -> Result<Encrypted, Self::Error>;

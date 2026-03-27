@@ -33,7 +33,7 @@ pub struct AesKwKey<C>
 where
     C: KeySizeUser,
 {
-    oct: Secret,
+    k: Secret,
     kw: AesKw<C>,
 }
 
@@ -50,7 +50,7 @@ where
 
     /// Return the key bytes (JWK `k` parameter).
     pub fn k(&self) -> &Secret {
-        &self.oct
+        &self.k
     }
 }
 
@@ -61,7 +61,7 @@ where
     fn from(key: Key<C>) -> Self {
         Self {
             kw: AesKw::new(&key),
-            oct: key.to_vec().into(),
+            k: key.to_vec().into(),
         }
     }
 }
@@ -75,7 +75,7 @@ where
     fn try_from(k: Secret) -> Result<Self, Self::Error> {
         let kw =
             AesKw::<C>::new_from_slice(k.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
-        Ok(Self { oct: k, kw })
+        Ok(Self { k, kw })
     }
 }
 

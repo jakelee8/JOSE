@@ -34,22 +34,25 @@
 extern crate alloc;
 
 mod alg;
-mod crypto;
+/// Cryptographic operations and key types.
+///
+/// This module provides concrete implementations of:
+/// - Signing and verification keys
+/// - Content encryption/decryption
+/// - Key wrapping/unwrapping
+/// - Cryptographic traits for algorithm abstraction
+pub mod crypto;
 mod enc;
 mod sign;
 
 pub use self::alg::*;
 #[cfg(any(
-    feature = "aes-cbc-hmac",
     feature = "aes-gcm",
     feature = "aes-kw",
     feature = "ecdh",
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
+    feature = "pbes2",
     feature = "rsa"
 ))]
+pub use self::crypto::KeyManagement;
 pub use self::enc::*;
 pub use self::sign::*;

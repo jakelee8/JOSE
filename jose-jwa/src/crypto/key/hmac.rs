@@ -137,7 +137,11 @@ where
     }
 }
 
-/// HMAC state.
+/// HMAC state for incremental signing/verification.
+///
+/// This struct maintains the HMAC state during the signing or verification process.
+/// Data is fed incrementally via the [`Update`] trait, and the MAC is produced
+/// or verified by calling [`Signer::finish`] or [`Verifier::finish`].
 pub struct HmacState<D> {
     hmac: D,
 }

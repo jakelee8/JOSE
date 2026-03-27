@@ -45,7 +45,7 @@ pub struct AesGcmKwKey<A>
 where
     A: AeadCore + KeyInit,
 {
-    oct: Secret,
+    k: Secret,
     kw: A,
 }
 
@@ -54,10 +54,10 @@ where
     A: AeadInOut + KeyInit,
 {
     /// Create a new AES-GCM-KW key from raw bytes.
-    pub fn from_slice(key: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let cipher = A::new_from_slice(key.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+        let cipher = A::new_from_slice(k.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
         Ok(Self {
-            oct: key.as_ref().to_vec().into(),
+            k: k.as_ref().to_vec().into(),
             kw: cipher,
         })
     }
@@ -69,8 +69,8 @@ where
         Ok(key.into())
     }
 
-    pub fn oct(&self) -> &Secret {
-        &self.oct
+    pub fn k(&self) -> &Secret {
+        &self.k
     }
 }
 
@@ -149,7 +149,7 @@ where
 {
     fn from(key: Key<A>) -> Self {
         Self {
-            oct: key.to_vec().into(),
+            k: key.to_vec().into(),
             kw: A::new(&key),
         }
     }
@@ -163,7 +163,7 @@ where
     fn try_from(oct: Secret) -> Result<Self, Self::Error> {
         Ok(Self {
             kw: A::new_from_slice(&oct).map_err(|_| CipherError::InvalidKeyLength)?,
-            oct,
+            k: oct,
         })
     }
 }

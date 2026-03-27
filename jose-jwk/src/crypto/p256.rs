@@ -52,15 +52,10 @@ impl KeyInfo for EcdsaSigningKey<p256::NistP256> {
 
 impl From<&EcdsaVerifyingKey<p256::NistP256>> for Ec {
     fn from(pk: &EcdsaVerifyingKey<p256::NistP256>) -> Self {
-        let sec1 = pk.to_sec1_bytes(false);
-        // Parse uncompressed SEC1 point: 0x04 || x || y
-        let x = sec1[1..33].to_vec().into();
-        let y = sec1[33..65].to_vec().into();
-
         Self {
             crv: EcCurves::P256,
-            x,
-            y,
+            x: pk.x(),
+            y: pk.y(),
             d: None,
         }
     }
@@ -100,7 +95,7 @@ impl TryFrom<Ec> for EcdsaVerifyingKey<p256::NistP256> {
 impl From<&EcdsaSigningKey<p256::NistP256>> for Ec {
     fn from(sk: &EcdsaSigningKey<p256::NistP256>) -> Self {
         let mut key: Self = sk.verifying_key().into();
-        key.d = Some(sk.to_bytes().into());
+        key.d = Some(sk.d().into());
         key
     }
 }
