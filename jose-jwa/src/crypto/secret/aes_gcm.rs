@@ -65,7 +65,6 @@ where
 
     Ok(Encrypted {
         ciphertext,
-        cek,
         iv: iv.to_vec(),
         tag,
     })

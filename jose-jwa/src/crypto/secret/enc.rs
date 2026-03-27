@@ -5,7 +5,7 @@
 
 #![cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 
-#[cfg(feature = "aes-cbc-hmac")]
+#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 use aes::{Aes128, Aes192, Aes256};
 #[cfg(feature = "aes-gcm")]
 use aes_gcm::AesGcm;

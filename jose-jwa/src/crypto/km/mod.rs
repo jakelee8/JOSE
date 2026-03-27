@@ -28,21 +28,23 @@ mod pbes2;
 #[cfg(feature = "rsa")]
 mod rsa_oaep;
 
-#[cfg(feature = "aes-gcm")]
-pub use aes_gcm_kw::*;
-#[cfg(feature = "aes-kw")]
-pub use aes_kw::*;
-#[cfg(feature = "ecdh")]
-pub use ecdh::*;
-#[cfg(feature = "pbes2")]
-pub use pbes2::*;
-#[cfg(feature = "rsa")]
-pub use rsa_oaep::*;
-
-use alloc::vec::Vec;
 use core::fmt;
+
+use jose_b64::serde::{Bytes, Secret};
+use rand_core::TryCryptoRng;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[cfg(feature = "aes-gcm")]
+pub use self::aes_gcm_kw::*;
+#[cfg(feature = "aes-kw")]
+pub use self::aes_kw::*;
+#[cfg(feature = "ecdh")]
+pub use self::ecdh::*;
+#[cfg(feature = "pbes2")]
+pub use self::pbes2::*;
+#[cfg(feature = "rsa")]
+pub use self::rsa_oaep::*;
 
 /// Key management modes for JWE "alg" header (RFC 7518 Section 4.1).
 ///
@@ -175,24 +177,54 @@ impl fmt::Display for KeyManagement {
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct WrappedKey {
     /// The encrypted Content Encryption Key (None for direct modes like "dir")
-    pub encrypted_key: Option<Vec<u8>>,
+    pub encrypted_key: Bytes,
     /// 96-bit IV for AES-GCM key wrap algorithms
-    pub iv: Option<Vec<u8>>,
+    pub iv: Option<Bytes>,
     /// 128-bit authentication tag for AES-GCM key wrap algorithms
-    pub tag: Option<Vec<u8>>,
+    pub tag: Option<Bytes>,
     /// Salt input for PBES2 algorithms (p2s header parameter, generated during wrap)
-    pub salt: Option<Vec<u8>>,
+    pub salt: Option<Bytes>,
 }
 
-/// Direct encryption - no wrapping needed
+/// A trait for wrapping keys.
 ///
-/// For "dir" algorithm, the shared key IS the CEK.
-/// Returns WrappedKey with encrypted_key: None.
-pub fn wrap_direct() -> WrappedKey {
-    WrappedKey {
-        encrypted_key: None,
-        iv: None,
-        tag: None,
-        salt: None,
-    }
+/// This trait is implemented by keys that can wrap other keys
+/// using algorithms like AES-KW (RFC 3394). Unlike content encryption,
+/// key wrapping does not use IV or AAD.
+pub trait WrappingKey {
+    /// The error type returned when wrapping fails.
+    type Error;
+
+    /// Wrap a content encryption key.
+    ///
+    /// # Arguments
+    /// * `cek` - The content encryption key to wrap
+    ///
+    /// # Returns
+    /// The wrapped key as a byte vector.
+    fn wrap(
+        &self,
+        rng: &mut impl TryCryptoRng,
+        cek: impl AsRef<[u8]>,
+    ) -> Result<WrappedKey, Self::Error>;
+}
+
+/// A trait for unwrapping keys.
+///
+/// This trait is implemented by keys that can unwrap other keys
+/// using algorithms like AES-KW (RFC 3394). Unlike content decryption,
+/// key unwrapping does not use IV or AAD.
+pub trait UnwrappingKey {
+    /// The error type returned when unwrapping fails.
+    type Error;
+
+    /// Unwrap a content encryption key.
+    ///
+    /// # Arguments
+    /// * `wrapped_key` - The wrapped key
+    ///
+    /// # Returns
+    /// The unwrapped key as a `Secret`. The caller is responsible for
+    /// verifying the length of the unwrapped key.
+    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error>;
 }

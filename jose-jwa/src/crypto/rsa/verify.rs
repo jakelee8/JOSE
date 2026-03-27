@@ -2,9 +2,9 @@
 
 use core::convert::Infallible;
 
-use digest::FixedOutputReset;
+use digest::{Digest, FixedOutputReset};
 use rsa::{pkcs1v15, pss};
-use sha2::{Sha256, Sha384, Sha512, digest::Digest};
+use sha2::{Sha256, Sha384, Sha512};
 
 use crate::crypto::digest::KeyRefDigestState;
 
@@ -25,26 +25,40 @@ pub type Ps384Verifier<'a> = VerifierPs<'a, Sha384>;
 /// PS512 (RSA-PSS + SHA-512) verifier
 pub type Ps512Verifier<'a> = VerifierPs<'a, Sha512>;
 
-impl<'a, D> crate::VerifyingKey<'a> for pkcs1v15::VerifyingKey<D>
+impl<D> crate::crypto::VerifyingKey for pkcs1v15::VerifyingKey<D>
 where
-    D: 'a + Digest,
+    D: Digest,
+    for<'a> VerifierRs<'a, D>: From<&'a pkcs1v15::VerifyingKey<D>>,
 {
-    type StartError = Infallible;
-    type Verifier = VerifierRs<'a, D>;
+    type Verifier<'a> = VerifierRs<'a, D> where Self: 'a;
+    type Error = Infallible;
 
-    fn verify(&'a self) -> Result<Self::Verifier, Self::StartError> {
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(self.into())
+    }
+
+    fn verify(&self, data: impl AsRef<[u8]>, signature: impl AsRef<[u8]>) -> Result<(), Self::Error> {
+        let mut verifier = self.verifier()?;
+        verifier.update(data)?;
+        verifier.finish(signature)
     }
 }
 
-impl<'a, D> crate::VerifyingKey<'a> for pss::VerifyingKey<D>
+impl<D> crate::crypto::VerifyingKey for pss::VerifyingKey<D>
 where
-    D: 'a + Digest + FixedOutputReset,
+    D: Digest + FixedOutputReset,
+    for<'a> VerifierPs<'a, D>: From<&'a pss::VerifyingKey<D>>,
 {
-    type StartError = Infallible;
-    type Verifier = VerifierPs<'a, D>;
+    type Verifier<'a> = VerifierPs<'a, D> where Self: 'a;
+    type Error = Infallible;
 
-    fn verify(&'a self) -> Result<Self::Verifier, Self::StartError> {
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(self.into())
+    }
+
+    fn verify(&self, data: impl AsRef<[u8]>, signature: impl AsRef<[u8]>) -> Result<(), Self::Error> {
+        let mut verifier = self.verifier()?;
+        verifier.update(data)?;
+        verifier.finish(signature)
     }
 }

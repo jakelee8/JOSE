@@ -4,103 +4,126 @@
 
 #![cfg(feature = "aes-kw")]
 
+use alloc::vec;
+
 use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser};
 use aes_gcm::KeySizeUser;
 use aes_kw::aes::{Aes128, Aes192, Aes256};
-use aes_kw::cipher::KeyInit;
+use aes_kw::cipher::{Key, KeyInit};
 use aes_kw::{AesKw, IV_LEN};
-use alloc::vec;
-use alloc::vec::Vec;
 use digest::consts::U16;
+use jose_b64::serde::Secret;
+use rand_core::TryCryptoRng;
 
+use super::{UnwrappingKey, WrappedKey, WrappingKey};
 use crate::CipherError;
 
-pub fn aes_wrap<C>(kek: impl AsRef<[u8]>, cek: impl AsRef<[u8]>) -> Result<Vec<u8>, CipherError>
+/// AES-128 Key Wrap key type alias.
+pub type AesKwKey128 = AesKwKey<Aes128>;
+/// AES-192 Key Wrap key type alias.
+pub type AesKwKey192 = AesKwKey<Aes192>;
+/// AES-256 Key Wrap key type alias.
+pub type AesKwKey256 = AesKwKey<Aes256>;
+
+/// An AES Key Wrap key encryption key.
+///
+/// This type wraps an AES-KW key and provides wrap/unwrap operations
+/// for JWE key management.
+pub struct AesKwKey<C>
 where
-    C: BlockCipherEncrypt<BlockSize = U16> + BlockSizeUser + KeyInit + KeySizeUser,
+    C: KeySizeUser,
 {
-    let kek = kek
-        .as_ref()
-        .try_into()
-        .map_err(|_| CipherError::InvalidKeyLength)?;
-
-    let kw = AesKw::<C>::new(kek);
-
-    let cek = cek.as_ref();
-    let mut encrypted_cek = vec![0u8; cek.len() + IV_LEN];
-    let encrypted_cek_len = kw
-        .wrap_key(cek, &mut encrypted_cek)
-        .map_err(|_| CipherError::Aead)?
-        .len();
-    encrypted_cek.resize(encrypted_cek_len, 0);
-    Ok(encrypted_cek)
+    oct: Secret,
+    kw: AesKw<C>,
 }
 
-pub fn aes_unwrap<C>(
-    kek: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError>
+impl<C> AesKwKey<C>
 where
-    C: BlockCipherDecrypt<BlockSize = U16> + BlockSizeUser + KeyInit + KeySizeUser,
+    C: KeyInit + KeySizeUser,
 {
-    let kek = kek
-        .as_ref()
-        .try_into()
-        .map_err(|_| CipherError::InvalidKeyLength)?;
+    /// Generate a random key.
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+        let mut key = Key::<C>::default();
+        rng.try_fill_bytes(&mut key).map_err(|_| CipherError::Rng)?;
+        Ok(key.into())
+    }
 
-    let kw = AesKw::<C>::new(kek);
-
-    let encrypted_cek = encrypted_cek.as_ref();
-    let mut buf = vec![0u8; encrypted_cek.len().saturating_sub(IV_LEN)];
-    kw.unwrap_key(encrypted_cek, &mut buf)
-        .map_err(|_| CipherError::Aead)?;
-    Ok(buf)
+    /// Get the key material as a `Secret`.
+    pub fn oct(&self) -> &Secret {
+        &self.oct
+    }
 }
 
-/// Wrap a CEK using AES-128-KW
-pub fn aes_128_wrap(
-    kek: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_wrap::<Aes128>(kek, cek)
+impl<C> From<Key<C>> for AesKwKey<C>
+where
+    C: KeyInit + KeySizeUser,
+{
+    fn from(key: Key<C>) -> Self {
+        Self {
+            kw: AesKw::new(&key),
+            oct: key.to_vec().into(),
+        }
+    }
 }
 
-/// Wrap a CEK using AES-192-KW
-pub fn aes_192_wrap(
-    kek: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_wrap::<Aes192>(kek, cek)
+impl<C> TryFrom<Secret> for AesKwKey<C>
+where
+    C: KeyInit + KeySizeUser,
+{
+    type Error = CipherError;
+
+    fn try_from(k: Secret) -> Result<Self, Self::Error> {
+        let kw =
+            AesKw::<C>::new_from_slice(k.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
+        Ok(Self { oct: k, kw })
+    }
 }
 
-/// Wrap a CEK using AES-256-KW
-pub fn aes_256_wrap(
-    kek: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_wrap::<Aes256>(kek, cek)
+impl<C> WrappingKey for AesKwKey<C>
+where
+    C: BlockCipherEncrypt<BlockSize = U16> + BlockSizeUser + KeySizeUser,
+{
+    type Error = CipherError;
+
+    fn wrap(
+        &self,
+        _rng: &mut impl TryCryptoRng,
+        cek: impl AsRef<[u8]>,
+    ) -> Result<WrappedKey, Self::Error> {
+        let cek = cek.as_ref();
+        let mut encrypted_cek = vec![0u8; cek.len() + IV_LEN];
+
+        let len = self
+            .kw
+            .wrap_key(cek.as_ref(), &mut encrypted_cek)
+            .map_err(|_| CipherError::Aead)?
+            .len();
+
+        encrypted_cek.resize(len, 0);
+
+        Ok(WrappedKey {
+            encrypted_key: encrypted_cek.into(),
+            iv: None,
+            tag: None,
+            salt: None,
+        })
+    }
 }
 
-/// Unwrap a CEK using AES-128-KW
-pub fn aes_128_unwrap(
-    kek: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_unwrap::<Aes128>(kek, encrypted_cek)
-}
+impl<C> UnwrappingKey for AesKwKey<C>
+where
+    C: BlockCipherDecrypt<BlockSize = U16> + BlockSizeUser + KeySizeUser,
+{
+    type Error = CipherError;
 
-/// Unwrap a CEK using AES-192-KW
-pub fn aes_192_unwrap(
-    kek: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_unwrap::<Aes192>(kek, encrypted_cek)
-}
+    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+        let encrypted_cek = wrapped_key.encrypted_key.as_ref();
+        let mut buf = vec![0u8; encrypted_cek.len().saturating_sub(IV_LEN)];
 
-/// Unwrap a CEK using AES-256-KW
-pub fn aes_256_unwrap(
-    kek: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    aes_unwrap::<Aes256>(kek, encrypted_cek)
+        self.kw
+            .unwrap_key(encrypted_cek, &mut buf)
+            .map_err(|_| CipherError::Aead)?;
+
+        Ok(buf.into())
+    }
 }

@@ -1,15 +1,23 @@
 #![cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
 
+#[cfg(feature = "k256")]
 mod k256;
+#[cfg(feature = "p256")]
 mod p256;
+#[cfg(feature = "p384")]
 mod p384;
+#[cfg(feature = "p521")]
 mod p521;
 mod sign;
 mod verify;
 
+#[cfg(feature = "k256")]
 pub use self::k256::*;
+#[cfg(feature = "p256")]
 pub use self::p256::*;
+#[cfg(feature = "p384")]
 pub use self::p384::*;
+#[cfg(feature = "p521")]
 pub use self::p521::*;
 
 use self::sign::*;

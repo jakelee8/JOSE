@@ -51,6 +51,5 @@ pub use self::alg::*;
     feature = "k256",
     feature = "rsa"
 ))]
-pub use self::crypto::*;
 pub use self::enc::*;
 pub use self::sign::*;

@@ -4,75 +4,248 @@
 
 #![cfg(feature = "rsa")]
 
+use core::iter;
+use core::marker::PhantomData;
+
 use alloc::vec::Vec;
 use digest::{Digest, FixedOutputReset};
-use rand_core::TryCryptoRng;
-use rsa::Oaep;
-use rsa::traits::PaddingScheme;
+use jose_b64::serde::{Bytes, Secret};
+use rand_core::{CryptoRng, TryCryptoRng};
+use rsa::traits::{PaddingScheme, PrivateKeyParts, PublicKeyParts};
+use rsa::{BoxedUint, Oaep};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 
 use crate::CipherError;
+use crate::crypto::km::{UnwrappingKey, WrappedKey, WrappingKey};
 
-/// Wrap (encrypt) a CEK using RSA-OAEP
-pub fn rsa_oaep_wrap<D>(
-    public_key: &RsaPublicKey,
-    cek: impl AsRef<[u8]>,
-    rng: &mut impl TryCryptoRng,
-) -> Result<Vec<u8>, CipherError>
+/// RSA-OAEP with SHA-1 public key type alias.
+pub type RsaOaepSha1PublicKey = RsaOaepPublicKey<Sha1>;
+/// RSA-OAEP with SHA-1 private key type alias.
+pub type RsaOaepSha1PrivateKey = RsaOaepPrivateKey<Sha1>;
+/// RSA-OAEP with SHA-256 public key type alias.
+pub type RsaOaepSha256PublicKey = RsaOaepPublicKey<Sha256>;
+/// RSA-OAEP with SHA-256 private key type alias.
+pub type RsaOaepSha256PrivateKey = RsaOaepPrivateKey<Sha256>;
+
+/// Minimum RSA key size in bytes (256 bytes = 2048 bits).
+pub const RSA_MIN_KEY_SIZE: usize = 256;
+/// Maximum RSA key size in bytes.
+pub const RSA_MAX_KEY_SIZE: usize = usize::MAX / 8;
+
+/// RSA-OAEP private key for unwrapping (decrypting) CEKs.
+pub struct RsaOaepPrivateKey<D> {
+    key: RsaPrivateKey,
+    _digest: PhantomData<D>,
+}
+
+impl<D> RsaOaepPrivateKey<D> {
+    /// Create a new RSA-OAEP private key.
+    pub fn from_components(
+        n: impl AsRef<[u8]>,
+        e: impl AsRef<[u8]>,
+        d: impl AsRef<[u8]>,
+    ) -> Result<Self, CipherError> {
+        Self::from_components_with_primes(n, e, d, iter::empty::<&[u8]>())
+    }
+
+    /// Create a new RSA-OAEP private key with CRT primes.
+    pub fn from_components_with_primes(
+        n: impl AsRef<[u8]>,
+        e: impl AsRef<[u8]>,
+        d: impl AsRef<[u8]>,
+        primes: impl Iterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, CipherError> {
+        let n = BoxedUint::from_be_slice_vartime(n.as_ref());
+        let e = BoxedUint::from_be_slice_vartime(e.as_ref());
+        let d = BoxedUint::from_be_slice_vartime(d.as_ref());
+        let primes = primes
+            .map(|p| BoxedUint::from_be_slice_vartime(p.as_ref()))
+            .collect::<Vec<_>>();
+
+        let mut key =
+            RsaPrivateKey::from_components(n, e, d, primes).map_err(|_| CipherError::InvalidKey)?;
+
+        // Precompute CRT parameters for faster decryption if possible
+        key.precompute().map_err(|_| CipherError::InvalidKey)?;
+
+        Ok(Self {
+            key,
+            _digest: PhantomData,
+        })
+    }
+
+    /// Generate a random RSA private key with the default key size (2048 bits).
+    pub fn random(rng: &mut impl CryptoRng) -> Result<Self, CipherError> {
+        Self::random_with_key_size(rng, RSA_MIN_KEY_SIZE)
+    }
+
+    /// Generate a random RSA private key with a specific key size (in bytes).
+    pub fn random_with_key_size(
+        rng: &mut impl CryptoRng,
+        key_size: usize,
+    ) -> Result<Self, CipherError> {
+        if key_size < RSA_MIN_KEY_SIZE || key_size > RSA_MAX_KEY_SIZE {
+            return Err(CipherError::InvalidKey);
+        }
+        RsaPrivateKey::new(rng, key_size * 8)
+            .map_err(|_| CipherError::InvalidKey)?
+            .try_into()
+    }
+
+    /// Get the modulus `n` as bytes.
+    pub fn n(&self) -> Bytes {
+        self.key.n().to_be_bytes().into()
+    }
+
+    /// Get the public exponent `e` as bytes.
+    pub fn e(&self) -> Bytes {
+        self.key.e().to_be_bytes().into()
+    }
+
+    /// Get the private exponent `d` as a secret.
+    pub fn d(&self) -> Secret {
+        self.key.d().to_be_bytes().into()
+    }
+
+    /// Get the first prime factor `p` if available.
+    pub fn p(&self) -> Option<Bytes> {
+        self.key.primes().get(0).map(|p| p.to_be_bytes().into())
+    }
+
+    /// Get the second prime factor `q` if available.
+    pub fn q(&self) -> Option<Bytes> {
+        self.key.primes().get(1).map(|q| q.to_be_bytes().into())
+    }
+
+    /// Get `d mod (p-1)` (CRT coefficient) if available.
+    pub fn dp(&self) -> Option<Bytes> {
+        self.key.dp().map(|dp| dp.to_be_bytes().into())
+    }
+
+    /// Get `d mod (q-1)` (CRT coefficient) if available.
+    pub fn dq(&self) -> Option<Bytes> {
+        self.key.dq().map(|dq| dq.to_be_bytes().into())
+    }
+
+    /// Get `q^-1 mod p` (CRT coefficient) if available.
+    pub fn qi(&self) -> Option<Bytes> {
+        self.key.qinv().map(|qi| qi.retrieve().to_be_bytes().into())
+    }
+}
+
+impl<D> TryFrom<RsaPrivateKey> for RsaOaepPrivateKey<D> {
+    type Error = CipherError;
+
+    fn try_from(mut key: RsaPrivateKey) -> Result<Self, Self::Error> {
+        key.precompute().map_err(|_| CipherError::InvalidKey)?;
+        Ok(Self {
+            key,
+            _digest: PhantomData,
+        })
+    }
+}
+
+impl<D> WrappingKey for RsaOaepPrivateKey<D>
 where
     D: Digest + FixedOutputReset,
     Oaep<D>: PaddingScheme,
 {
-    Oaep::<D>::new()
-        .encrypt(rng, public_key, cek.as_ref())
-        .map_err(|_| CipherError::Aead)
+    type Error = CipherError;
+
+    fn wrap(
+        &self,
+        rng: &mut impl TryCryptoRng,
+        cek: impl AsRef<[u8]>,
+    ) -> Result<WrappedKey, Self::Error> {
+        let encrypted_key = Oaep::<D>::new()
+            .encrypt(rng, self.key.as_public_key(), cek.as_ref())
+            .map_err(|_| CipherError::Aead)?;
+
+        Ok(WrappedKey {
+            encrypted_key: encrypted_key.into(),
+            iv: None,
+            tag: None,
+            salt: None,
+        })
+    }
 }
 
-/// Unwrap (decrypt) a CEK using RSA-OAEP
-pub fn rsa_oaep_unwrap<D>(
-    private_key: &RsaPrivateKey,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError>
+impl<D> UnwrappingKey for RsaOaepPrivateKey<D>
 where
     D: Digest + FixedOutputReset,
+    Oaep<D>: PaddingScheme,
 {
-    private_key
-        .decrypt(Oaep::<D>::new(), encrypted_cek.as_ref())
-        .map_err(|_| CipherError::Aead)
+    type Error = CipherError;
+
+    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+        self.key
+            .decrypt(Oaep::<D>::new(), wrapped_key.encrypted_key.as_ref())
+            .map_err(|_| CipherError::Aead)
+            .map(Secret::from)
+    }
 }
 
-/// Wrap (encrypt) a CEK using RSA-OAEP with SHA-1
-pub fn wrap_sha1(
-    public_key: &RsaPublicKey,
-    cek: impl AsRef<[u8]>,
-    rng: &mut impl TryCryptoRng,
-) -> Result<Vec<u8>, CipherError> {
-    rsa_oaep_wrap::<Sha1>(public_key, cek, rng)
+/// RSA-OAEP public key for wrapping (encrypting) CEKs.
+pub struct RsaOaepPublicKey<D> {
+    key: RsaPublicKey,
+    _digest: PhantomData<D>,
 }
 
-/// Wrap (encrypt) a CEK using RSA-OAEP with SHA-256
-pub fn wrap_sha256(
-    public_key: &RsaPublicKey,
-    cek: impl AsRef<[u8]>,
-    rng: &mut impl TryCryptoRng,
-) -> Result<Vec<u8>, CipherError> {
-    rsa_oaep_wrap::<Sha256>(public_key, cek, rng)
+impl<D> From<RsaPublicKey> for RsaOaepPublicKey<D> {
+    fn from(key: RsaPublicKey) -> Self {
+        Self {
+            key,
+            _digest: PhantomData,
+        }
+    }
 }
 
-/// Unwrap (decrypt) a CEK using RSA-OAEP with SHA-1
-pub fn unwrap_sha1(
-    private_key: &RsaPrivateKey,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    rsa_oaep_unwrap::<Sha1>(private_key, encrypted_cek)
+impl<D> RsaOaepPublicKey<D> {
+    /// Create a new RSA-OAEP public key from unsigned big-endian octet sequence components.
+    pub fn from_components(n: impl AsRef<[u8]>, e: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+        let n = BoxedUint::from_be_slice_vartime(n.as_ref());
+        let e = BoxedUint::from_be_slice_vartime(e.as_ref());
+        let key = RsaPublicKey::new(n, e).map_err(|_| CipherError::InvalidKey)?;
+        Ok(Self {
+            key,
+            _digest: PhantomData,
+        })
+    }
+
+    /// Get the modulus `n` as an unsigned big-endian octet sequence.
+    pub fn n(&self) -> Bytes {
+        self.key.n().to_be_bytes().into()
+    }
+
+    /// Get the public exponent `e` as an unsigned big-endian octet sequence.
+    pub fn e(&self) -> Bytes {
+        self.key.e().to_be_bytes().into()
+    }
 }
 
-/// Unwrap (decrypt) a CEK using RSA-OAEP with SHA-256
-pub fn unwrap_sha256(
-    private_key: &RsaPrivateKey,
-    encrypted_cek: impl AsRef<[u8]>,
-) -> Result<Vec<u8>, CipherError> {
-    rsa_oaep_unwrap::<Sha256>(private_key, encrypted_cek)
+impl<D> WrappingKey for RsaOaepPublicKey<D>
+where
+    D: Digest + FixedOutputReset,
+    Oaep<D>: PaddingScheme,
+{
+    type Error = CipherError;
+
+    fn wrap(
+        &self,
+        rng: &mut impl TryCryptoRng,
+        cek: impl AsRef<[u8]>,
+    ) -> Result<WrappedKey, Self::Error> {
+        let encrypted_key = Oaep::<D>::new()
+            .encrypt(rng, &self.key, cek.as_ref())
+            .map_err(|_| CipherError::Aead)?;
+
+        Ok(WrappedKey {
+            encrypted_key: encrypted_key.into(),
+            iv: None,
+            tag: None,
+            salt: None,
+        })
+    }
 }

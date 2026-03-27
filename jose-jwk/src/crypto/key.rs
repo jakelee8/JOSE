@@ -3,6 +3,7 @@
 
 use alloc::boxed::Box;
 
+use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey, RsaSigningKey, RsaVerifyingKey};
 use jose_jwa::Algorithm;
 use zeroize::Zeroizing;
 
@@ -10,10 +11,10 @@ use super::KeyInfo;
 
 /// A fully parsed Key that mimics the runtime behavior of a JWK.
 ///
-/// A JWK is a half-parsed key. This means that it reprsents a parsed view of
+/// A JWK is a half-parsed key. This means that it represents a parsed view of
 /// the data structure on the wire. But this is not yet usable to perform
 /// cryptographic operations. A Key, on the other hand, is a fully parsed key
-/// ready to perform cryptogrpahic operations.
+/// ready to perform cryptographic operations.
 ///
 /// Since RustCrypto provides strong typing and, in order to match the
 /// behavior of a JWK, this structure allows us to represent the different
@@ -25,23 +26,23 @@ pub enum Key {
 
     /// An RSA key.
     #[cfg(feature = "rsa")]
-    Rsa(super::Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>),
+    Rsa(super::Kind<RsaVerifyingKey, RsaSigningKey>),
 
     /// A P-256 key.
     #[cfg(feature = "p256")]
-    P256(super::Kind<p256::PublicKey, p256::SecretKey>),
+    P256(super::Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>>),
 
     /// A P-384 key.
     #[cfg(feature = "p384")]
-    P384(super::Kind<p384::PublicKey, p384::SecretKey>),
+    P384(super::Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>>),
 
     /// A P-521 key.
     #[cfg(feature = "p521")]
-    P521(super::Kind<p521::PublicKey, p521::SecretKey>),
+    P521(super::Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>>),
 
     /// A Secp256k1 key.
     #[cfg(feature = "k256")]
-    P256K(super::Kind<k256::PublicKey, k256::SecretKey>),
+    P256K(super::Kind<EcdsaVerifyingKey<k256::Secp256k1>, EcdsaSigningKey<k256::Secp256k1>>),
 }
 
 impl KeyInfo for Key {
@@ -95,85 +96,91 @@ impl From<Zeroizing<Box<[u8]>>> for Key {
 }
 
 #[cfg(feature = "rsa")]
-impl From<super::Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>> for Key {
-    fn from(value: super::Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>) -> Self {
+impl From<super::Kind<RsaVerifyingKey, RsaSigningKey>> for Key {
+    fn from(value: super::Kind<RsaVerifyingKey, RsaSigningKey>) -> Self {
         Self::Rsa(value)
     }
 }
 
 #[cfg(feature = "rsa")]
-impl From<rsa::RsaPublicKey> for Key {
-    fn from(value: rsa::RsaPublicKey) -> Self {
+impl From<RsaVerifyingKey> for Key {
+    fn from(value: RsaVerifyingKey) -> Self {
         Self::Rsa(super::Kind::Public(value))
     }
 }
 
 #[cfg(feature = "rsa")]
-impl From<rsa::RsaPrivateKey> for Key {
-    fn from(value: rsa::RsaPrivateKey) -> Self {
+impl From<RsaSigningKey> for Key {
+    fn from(value: RsaSigningKey) -> Self {
         Self::Rsa(super::Kind::Secret(value))
     }
 }
 
 #[cfg(feature = "p256")]
-impl From<super::Kind<p256::PublicKey, p256::SecretKey>> for Key {
-    fn from(value: super::Kind<p256::PublicKey, p256::SecretKey>) -> Self {
+impl From<super::Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>>> for Key {
+    fn from(
+        value: super::Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>>,
+    ) -> Self {
         Self::P256(value)
     }
 }
 
 #[cfg(feature = "p256")]
-impl From<p256::PublicKey> for Key {
-    fn from(value: p256::PublicKey) -> Self {
+impl From<EcdsaVerifyingKey<p256::NistP256>> for Key {
+    fn from(value: EcdsaVerifyingKey<p256::NistP256>) -> Self {
         Self::P256(super::Kind::Public(value))
     }
 }
 
 #[cfg(feature = "p256")]
-impl From<p256::SecretKey> for Key {
-    fn from(value: p256::SecretKey) -> Self {
+impl From<EcdsaSigningKey<p256::NistP256>> for Key {
+    fn from(value: EcdsaSigningKey<p256::NistP256>) -> Self {
         Self::P256(super::Kind::Secret(value))
     }
 }
 
 #[cfg(feature = "p384")]
-impl From<super::Kind<p384::PublicKey, p384::SecretKey>> for Key {
-    fn from(value: super::Kind<p384::PublicKey, p384::SecretKey>) -> Self {
+impl From<super::Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>>> for Key {
+    fn from(
+        value: super::Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>>,
+    ) -> Self {
         Self::P384(value)
     }
 }
 
 #[cfg(feature = "p384")]
-impl From<p384::PublicKey> for Key {
-    fn from(value: p384::PublicKey) -> Self {
+impl From<EcdsaVerifyingKey<p384::NistP384>> for Key {
+    fn from(value: EcdsaVerifyingKey<p384::NistP384>) -> Self {
         Self::P384(super::Kind::Public(value))
     }
 }
 
 #[cfg(feature = "p384")]
-impl From<p384::SecretKey> for Key {
-    fn from(value: p384::SecretKey) -> Self {
+impl From<EcdsaSigningKey<p384::NistP384>> for Key {
+    fn from(value: EcdsaSigningKey<p384::NistP384>) -> Self {
         Self::P384(super::Kind::Secret(value))
     }
 }
 
 #[cfg(feature = "p521")]
-impl From<super::Kind<p521::PublicKey, p521::SecretKey>> for Key {
-    fn from(value: super::Kind<p521::PublicKey, p521::SecretKey>) -> Self {
+impl From<super::Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>>> for Key {
+    fn from(
+        value: super::Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>>,
+    ) -> Self {
         Self::P521(value)
     }
 }
 
 #[cfg(feature = "p521")]
-impl From<p521::PublicKey> for Key {
-    fn from(value: p521::PublicKey) -> Self {
+impl From<EcdsaVerifyingKey<p521::NistP521>> for Key {
+    fn from(value: EcdsaVerifyingKey<p521::NistP521>) -> Self {
         Self::P521(super::Kind::Public(value))
     }
 }
 
 #[cfg(feature = "p521")]
-impl From<p521::SecretKey> for Key {
-    fn from(value: p521::SecretKey) -> Self {
+impl From<EcdsaSigningKey<p521::NistP521>> for Key {
+    fn from(value: EcdsaSigningKey<p521::NistP521>) -> Self {
         Self::P521(super::Kind::Secret(value))
     }
 }

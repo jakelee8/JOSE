@@ -55,29 +55,29 @@ where
     }
 }
 
-impl<'a, K, D, S> super::Signer for KeyRefDigestState<'a, K, D, S>
+impl<'a, K, D, S> crate::crypto::Signer for KeyRefDigestState<'a, K, D, S>
 where
     D: Digest,
     K: signature::hazmat::PrehashSigner<S>,
     S: SignatureEncoding,
 {
-    type FinishError = signature::Error;
+    type Error = signature::Error;
 
-    fn finish(self) -> Result<Vec<u8>, Self::FinishError> {
+    fn finish(self) -> Result<jose_b64::serde::Bytes, <Self as crate::crypto::Signer>::Error> {
         let sig = self.key.sign_prehash(&self.digest.finalize())?;
-        Ok(sig.to_vec())
+        Ok(sig.to_bytes().as_ref().to_vec().into())
     }
 }
 
-impl<'a, K, D, S> super::Verifier<'a> for KeyRefDigestState<'a, K, D, S>
+impl<'a, K, D, S> crate::crypto::Verifier for KeyRefDigestState<'a, K, D, S>
 where
-    D: 'a + Digest,
+    D: Digest,
     K: signature::hazmat::PrehashVerifier<S>,
     S: SignatureEncoding,
 {
-    type FinishError = signature::Error;
+    type Error = signature::Error;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::FinishError> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as crate::crypto::Verifier>::Error> {
         let sig = signature
             .as_ref()
             .try_into()

@@ -25,232 +25,211 @@
 
 #![cfg(feature = "pbes2")]
 
-extern crate alloc;
+use core::marker::PhantomData;
 
-use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser};
+use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, KeyInit};
 use aes_gcm::KeySizeUser;
-use alloc::vec::Vec;
-
 use aes_kw::aes::{Aes128, Aes192, Aes256};
+use aes_kw::cipher::Key;
 use digest::consts::U16;
-use hmac::{EagerHash, KeyInit};
+use hmac::EagerHash;
+use jose_b64::serde::Secret;
 use pbkdf2::pbkdf2_hmac;
 use rand_core::TryCryptoRng;
 use sha2::{Sha256, Sha384, Sha512};
-use zeroize::Zeroize;
 
-use super::{WrappedKey, aes_unwrap, aes_wrap};
+use super::{AesKwKey, UnwrappingKey, WrappedKey, WrappingKey};
 use crate::CipherError;
 
+/// PBES2-HS256+A128KW key type.
+pub type Pbes2Hs256A128Key = Pbes2Key<ConfigHs256A128>;
+/// PBES2-HS384+A192KW key type.
+pub type Pbes2Hs384A192Key = Pbes2Key<ConfigHs384A192>;
+/// PBES2-HS512+A256KW key type.
+pub type Pbes2Hs512A256Key = Pbes2Key<ConfigHs512A256>;
+
 /// PBES2 salt size in bytes. Must be >= 8 per RFC 7518 Section 4.8.1.1.
-const SALT_SIZE: usize = 16;
+pub const SALT_SIZE: usize = 16;
 
-/// Algorithm identifiers for PBES2
-const ALG_HS256_A128: &str = "PBES2-HS256+A128KW";
-const ALG_HS384_A192: &str = "PBES2-HS384+A192KW";
-const ALG_HS512_A256: &str = "PBES2-HS512+A256KW";
-
-/// Trait for PBES2 configuration
+/// Trait for PBES2 configuration.
+///
+/// This trait defines the cipher, digest, and algorithm name for a PBES2 variant.
 trait Pbes2Config {
-    /// The AES cipher type
+    /// The AES cipher type for key wrapping.
     type Cipher: BlockSizeUser + KeyInit + KeySizeUser;
-    /// The hash digest type
+    /// The hash digest type for PBKDF2.
     type Digest: EagerHash<Core: Sync>;
-    /// The algorithm name for salt construction
+    /// The algorithm name for salt construction.
     const ALG_NAME: &'static str;
-    /// The KEK size in bytes
-    const KEK_SIZE: usize;
 }
 
 /// Configuration for PBES2-HS256+A128KW
-struct ConfigHs256A128;
+pub struct ConfigHs256A128;
 
 impl Pbes2Config for ConfigHs256A128 {
     type Cipher = Aes128;
     type Digest = Sha256;
-    const ALG_NAME: &'static str = ALG_HS256_A128;
-    const KEK_SIZE: usize = 16;
+    const ALG_NAME: &'static str = "PBES2-HS256+A128KW";
 }
 
 /// Configuration for PBES2-HS384+A192KW
-struct ConfigHs384A192;
+pub struct ConfigHs384A192;
 
 impl Pbes2Config for ConfigHs384A192 {
     type Cipher = Aes192;
     type Digest = Sha384;
-    const ALG_NAME: &'static str = ALG_HS384_A192;
-    const KEK_SIZE: usize = 24;
+    const ALG_NAME: &'static str = "PBES2-HS384+A192KW";
 }
 
 /// Configuration for PBES2-HS512+A256KW
-struct ConfigHs512A256;
+pub struct ConfigHs512A256;
 
 impl Pbes2Config for ConfigHs512A256 {
     type Cipher = Aes256;
     type Digest = Sha512;
-    const ALG_NAME: &'static str = ALG_HS512_A256;
-    const KEK_SIZE: usize = 32;
+    const ALG_NAME: &'static str = "PBES2-HS512+A256KW";
 }
 
-/// Construct the PBKDF2 salt per RFC 7518 Section 4.8.1.1:
-/// `UTF8(alg) || 0x00 || Salt Input`
-fn build_salt(alg: &str, salt_input: &[u8]) -> Vec<u8> {
-    let mut salt = Vec::with_capacity(alg.len() + 1 + salt_input.len());
-    salt.extend_from_slice(alg.as_bytes());
-    salt.push(0x00);
-    salt.extend_from_slice(salt_input);
-    salt
-}
-
-/// Generic PBES2 wrap implementation.
+/// A PBES2 key encryption key.
 ///
-/// Generates a random [`SALT_SIZE`]-byte salt internally. The salt is returned in
-/// [`WrappedKey::salt`] and must be stored in the JWE header `p2s` parameter.
-fn wrap_pbes2<C>(
-    password: &[u8],
-    cek: &[u8],
+/// This type wraps a password and iteration count, providing PBES2 key wrapping
+/// and unwrapping operations for JWE key management per RFC 7518 Section 4.8.
+///
+/// Generic over the PBES2 configuration (cipher, digest, and algorithm name).
+///
+/// # Type Aliases
+/// - `Pbes2Hs256A128Key` for PBES2-HS256+A128KW
+/// - `Pbes2Hs384A192Key` for PBES2-HS384+A192KW
+/// - `Pbes2Hs512A256Key` for PBES2-HS512+A256KW
+///
+/// # Example
+/// ```
+/// use jose_jwa::{Pbes2Hs256A128Key, WrappingKey, UnwrappingKey, WrappedKey};
+///
+/// // Create a PBES2 key with password and iteration count
+/// let password = b"my-secret-password";
+/// let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
+///
+/// // Wrap a CEK
+/// // let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+///
+/// // Unwrap (iteration count is stored in the key)
+/// // let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
+/// ```
+pub struct Pbes2Key<C> {
+    password: Secret,
     iteration_count: u32,
-    rng: &mut impl TryCryptoRng,
-) -> Result<WrappedKey, CipherError>
+    _config: PhantomData<C>,
+}
+
+impl<C> Pbes2Key<C> {
+    /// Create a new PBES2 key with the given password and iteration count.
+    ///
+    /// Per RFC 7518, an iteration count of 1000 is RECOMMENDED; higher values
+    /// provide better protection against brute-force attacks. For production
+    /// use, iteration counts of 10000 or higher are recommended.
+    pub fn new(password: impl AsRef<[u8]>, iteration_count: u32) -> Self {
+        Self {
+            password: password.as_ref().to_vec().into(),
+            iteration_count,
+            _config: PhantomData,
+        }
+    }
+
+    /// Get the password as a secret.
+    pub fn password(&self) -> &Secret {
+        &self.password
+    }
+
+    /// Get the iteration count.
+    pub fn iteration_count(&self) -> u32 {
+        self.iteration_count
+    }
+}
+
+impl<C> WrappingKey for Pbes2Key<C>
 where
     C: Pbes2Config,
     C::Cipher: BlockCipherEncrypt<BlockSize = U16>,
 {
-    // Generate a random salt input (p2s). SALT_SIZE >= 8 satisfies RFC 7518 Section 4.8.1.1.
-    let mut salt_input = [0u8; SALT_SIZE];
-    rng.try_fill_bytes(&mut salt_input)
-        .map_err(|_| CipherError::Rng)?;
+    type Error = CipherError;
 
-    let salt = build_salt(C::ALG_NAME, &salt_input);
+    fn wrap(
+        &self,
+        rng: &mut impl TryCryptoRng,
+        cek: impl AsRef<[u8]>,
+    ) -> Result<WrappedKey, Self::Error> {
+        // Generate a random salt input (p2s). SALT_SIZE >= 8 satisfies RFC 7518 Section 4.8.1.1.
+        let mut salt_input = [0u8; SALT_SIZE];
+        rng.try_fill_bytes(&mut salt_input)
+            .map_err(|_| CipherError::Rng)?;
 
-    let mut kek = alloc::vec![0u8; C::KEK_SIZE];
-    pbkdf2_hmac::<C::Digest>(password, &salt, iteration_count, &mut kek);
+        // Build the full salt: UTF8(alg) || 0x00 || Salt Input
+        let salt = build_salt(C::ALG_NAME, &salt_input);
 
-    let encrypted_key = aes_wrap::<C::Cipher>(&kek, cek)?;
-    kek.zeroize();
+        // Derive KEK using PBKDF2
+        let mut kek = Key::<C::Cipher>::default();
+        pbkdf2_hmac::<C::Digest>(
+            self.password.as_ref(),
+            &salt,
+            self.iteration_count,
+            &mut kek,
+        );
 
-    Ok(WrappedKey {
-        encrypted_key: Some(encrypted_key),
-        iv: None,
-        tag: None,
-        salt: Some(salt_input.to_vec()),
-    })
+        // Wrap the CEK using AES-KW
+        let mut wrapped = AesKwKey::<C::Cipher>::from(kek).wrap(rng, cek)?;
+
+        // Add the salt to the wrapped key
+        wrapped.salt = Some(salt_input.to_vec().into());
+
+        Ok(wrapped)
+    }
 }
 
-/// Generic PBES2 unwrap implementation.
-///
-/// `salt_input` is the raw `p2s` value from the JWE header (before prepending the algorithm
-/// label). It MUST be at least 8 octets per RFC 7518 Section 4.8.1.1.
-fn unwrap_pbes2<C>(
-    password: &[u8],
-    encrypted_cek: &[u8],
-    salt_input: &[u8],
-    iteration_count: u32,
-) -> Result<Vec<u8>, CipherError>
+impl<C> UnwrappingKey for Pbes2Key<C>
 where
     C: Pbes2Config,
     C::Cipher: BlockCipherDecrypt<BlockSize = U16>,
 {
-    if salt_input.len() < 8 {
-        return Err(CipherError::InvalidSaltLength);
+    type Error = CipherError;
+
+    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+        // Extract salt from wrapped key
+        let salt_input = wrapped_key
+            .salt
+            .as_ref()
+            .ok_or(CipherError::MissingSalt)?
+            .as_ref();
+
+        if salt_input.len() < 8 {
+            return Err(CipherError::InvalidSaltLength);
+        }
+
+        // Build the full salt: UTF8(alg) || 0x00 || Salt Input
+        let salt = build_salt(C::ALG_NAME, salt_input);
+
+        // Derive KEK using PBKDF2
+        let mut kek = Key::<C::Cipher>::default();
+        pbkdf2_hmac::<C::Digest>(
+            self.password.as_ref(),
+            &salt,
+            self.iteration_count,
+            &mut kek,
+        );
+
+        // Unwrap the CEK using AES-KW
+        AesKwKey::<C::Cipher>::from(kek).unwrap(wrapped_key)
     }
-
-    let salt = build_salt(C::ALG_NAME, salt_input);
-
-    let mut kek = alloc::vec![0u8; C::KEK_SIZE];
-    pbkdf2_hmac::<C::Digest>(password, &salt, iteration_count, &mut kek);
-
-    let result = aes_unwrap::<C::Cipher>(&kek, encrypted_cek);
-    kek.zeroize();
-
-    result
 }
 
-/// PBES2-HS256+A128KW wrap.
-///
-/// Generates a random salt internally and returns it in [`WrappedKey::salt`].
-/// The salt MUST be stored in the JWE header `p2s` parameter.
-///
-/// Per RFC 7518, an iteration count of 1000 is RECOMMENDED; higher values provide
-/// better protection against brute-force attacks.
-pub fn wrap_hs_256_a128(
-    password: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-    iteration_count: u32,
-    rng: &mut impl TryCryptoRng,
-) -> Result<WrappedKey, CipherError> {
-    wrap_pbes2::<ConfigHs256A128>(password.as_ref(), cek.as_ref(), iteration_count, rng)
-}
-
-/// PBES2-HS384+A192KW wrap.
-pub fn wrap_hs_384_a192(
-    password: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-    iteration_count: u32,
-    rng: &mut impl TryCryptoRng,
-) -> Result<WrappedKey, CipherError> {
-    wrap_pbes2::<ConfigHs384A192>(password.as_ref(), cek.as_ref(), iteration_count, rng)
-}
-
-/// PBES2-HS512+A256KW wrap.
-pub fn wrap_hs_512_a256(
-    password: impl AsRef<[u8]>,
-    cek: impl AsRef<[u8]>,
-    iteration_count: u32,
-    rng: &mut impl TryCryptoRng,
-) -> Result<WrappedKey, CipherError> {
-    wrap_pbes2::<ConfigHs512A256>(password.as_ref(), cek.as_ref(), iteration_count, rng)
-}
-
-/// PBES2-HS256+A128KW unwrap.
-///
-/// `salt_input` is the raw `p2s` value from the JWE header. Must be >= 8 bytes.
-pub fn unwrap_hs_256_a128(
-    password: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-    salt_input: impl AsRef<[u8]>,
-    iteration_count: u32,
-) -> Result<Vec<u8>, CipherError> {
-    unwrap_pbes2::<ConfigHs256A128>(
-        password.as_ref(),
-        encrypted_cek.as_ref(),
-        salt_input.as_ref(),
-        iteration_count,
-    )
-}
-
-/// PBES2-HS384+A192KW unwrap.
-///
-/// `salt_input` is the raw `p2s` value from the JWE header. Must be >= 8 bytes.
-pub fn unwrap_hs_384_a192(
-    password: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-    salt_input: impl AsRef<[u8]>,
-    iteration_count: u32,
-) -> Result<Vec<u8>, CipherError> {
-    unwrap_pbes2::<ConfigHs384A192>(
-        password.as_ref(),
-        encrypted_cek.as_ref(),
-        salt_input.as_ref(),
-        iteration_count,
-    )
-}
-
-/// PBES2-HS512+A256KW unwrap.
-///
-/// `salt_input` is the raw `p2s` value from the JWE header. Must be >= 8 bytes.
-pub fn unwrap_hs_512_a256(
-    password: impl AsRef<[u8]>,
-    encrypted_cek: impl AsRef<[u8]>,
-    salt_input: impl AsRef<[u8]>,
-    iteration_count: u32,
-) -> Result<Vec<u8>, CipherError> {
-    unwrap_pbes2::<ConfigHs512A256>(
-        password.as_ref(),
-        encrypted_cek.as_ref(),
-        salt_input.as_ref(),
-        iteration_count,
-    )
+/// Construct the PBKDF2 salt per RFC 7518 Section 4.8.1.1:
+/// `UTF8(alg) || 0x00 || Salt Input`
+fn build_salt(alg: &str, salt_input: &[u8]) -> alloc::vec::Vec<u8> {
+    let mut salt = alloc::vec::Vec::with_capacity(alg.len() + 1 + salt_input.len());
+    salt.extend_from_slice(alg.as_bytes());
+    salt.push(0x00);
+    salt.extend_from_slice(salt_input);
+    salt
 }
 
 #[cfg(test)]
@@ -260,13 +239,19 @@ mod tests {
     #[test]
     fn test_salt_construction() {
         let salt_input = b"test-salt-input";
-        let salt = build_salt(ALG_HS256_A128, salt_input);
+        let salt = build_salt("PBES2-HS256+A128KW", salt_input);
 
-        let expected_len = ALG_HS256_A128.len() + 1 + salt_input.len();
+        let expected_len = "PBES2-HS256+A128KW".len() + 1 + salt_input.len();
         assert_eq!(salt.len(), expected_len);
-        assert_eq!(&salt[..ALG_HS256_A128.len()], ALG_HS256_A128.as_bytes());
-        assert_eq!(salt[ALG_HS256_A128.len()], 0x00);
-        assert_eq!(&salt[ALG_HS256_A128.len() + 1..], salt_input.as_slice());
+        assert_eq!(
+            &salt[.."PBES2-HS256+A128KW".len()],
+            "PBES2-HS256+A128KW".as_bytes()
+        );
+        assert_eq!(salt["PBES2-HS256+A128KW".len()], 0x00);
+        assert_eq!(
+            &salt["PBES2-HS256+A128KW".len() + 1..],
+            salt_input.as_slice()
+        );
     }
 
     #[test]
@@ -276,13 +261,11 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
         let iteration_count = 1000;
 
-        let wrapped = wrap_hs_256_a128(password, cek, iteration_count, &mut rng).unwrap();
-        let salt = wrapped.salt.clone().unwrap();
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
-        let unwrapped =
-            unwrap_hs_256_a128(password, &encrypted_key, &salt, iteration_count).unwrap();
+        let pbes2_key = Pbes2Hs256A128Key::new(password, iteration_count);
+        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
 
-        assert_eq!(unwrapped, cek.as_slice());
+        assert_eq!(unwrapped.as_ref(), cek);
     }
 
     #[test]
@@ -292,13 +275,11 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
         let iteration_count = 1000;
 
-        let wrapped = wrap_hs_384_a192(password, cek, iteration_count, &mut rng).unwrap();
-        let salt = wrapped.salt.clone().unwrap();
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
-        let unwrapped =
-            unwrap_hs_384_a192(password, &encrypted_key, &salt, iteration_count).unwrap();
+        let pbes2_key = Pbes2Hs384A192Key::new(password, iteration_count);
+        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
 
-        assert_eq!(unwrapped, cek.as_slice());
+        assert_eq!(unwrapped.as_ref(), cek);
     }
 
     #[test]
@@ -308,13 +289,11 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
         let iteration_count = 1000;
 
-        let wrapped = wrap_hs_512_a256(password, cek, iteration_count, &mut rng).unwrap();
-        let salt = wrapped.salt.clone().unwrap();
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
-        let unwrapped =
-            unwrap_hs_512_a256(password, &encrypted_key, &salt, iteration_count).unwrap();
+        let pbes2_key = Pbes2Hs512A256Key::new(password, iteration_count);
+        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
 
-        assert_eq!(unwrapped, cek.as_slice());
+        assert_eq!(unwrapped.as_ref(), cek);
     }
 
     #[test]
@@ -324,11 +303,11 @@ mod tests {
         let wrong_password = b"wrong-password";
         let cek = b"my-content-encryption-key!!12345";
 
-        let wrapped = wrap_hs_256_a128(password, cek, 1000, &mut rng).unwrap();
-        let salt = wrapped.salt.clone().unwrap();
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
+        let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
+        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
 
-        assert!(unwrap_hs_256_a128(wrong_password, &encrypted_key, &salt, 1000).is_err());
+        let wrong_key = Pbes2Hs256A128Key::new(wrong_password, 1000);
+        assert!(wrong_key.unwrap(&wrapped).is_err());
     }
 
     #[test]
@@ -337,11 +316,13 @@ mod tests {
         let password = b"my-secret-password";
         let cek = b"my-content-encryption-key!!12345";
 
-        let wrapped = wrap_hs_256_a128(password, cek, 1000, &mut rng).unwrap();
-        let wrong_salt = b"wrong-salt-input!!";
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
+        let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
+        let mut wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
 
-        assert!(unwrap_hs_256_a128(password, &encrypted_key, wrong_salt, 1000).is_err());
+        // Modify the salt
+        wrapped.salt = Some(b"wrong-salt-input!!".to_vec().into());
+
+        assert!(pbes2_key.unwrap(&wrapped).is_err());
     }
 
     #[test]
@@ -350,19 +331,26 @@ mod tests {
         let password = b"my-secret-password";
         let cek = b"my-content-encryption-key!!12345";
 
-        let wrapped = wrap_hs_256_a128(password, cek, 1000, &mut rng).unwrap();
-        let salt = wrapped.salt.clone().unwrap();
-        let encrypted_key = wrapped.encrypted_key.clone().unwrap();
+        let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
+        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
 
-        assert!(unwrap_hs_256_a128(password, &encrypted_key, &salt, 999).is_err());
+        // Use wrong iteration count
+        let wrong_key = Pbes2Hs256A128Key::new(password, 999);
+        assert!(wrong_key.unwrap(&wrapped).is_err());
     }
 
     #[test]
-    fn test_short_salt_rejected_on_unwrap() {
+    fn test_missing_salt_fails() {
         let password = b"my-secret-password";
-        let cek = b"my-content-encryption-key!!12345";
-        let short_salt = b"tiny"; // 4 bytes < 8
+        let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
 
-        assert!(unwrap_hs_256_a128(password, cek, short_salt, 1000).is_err());
+        let wrapped = WrappedKey {
+            encrypted_key: b"dummy".to_vec().into(),
+            iv: None,
+            tag: None,
+            salt: None, // Missing salt
+        };
+
+        assert!(pbes2_key.unwrap(&wrapped).is_err());
     }
 }

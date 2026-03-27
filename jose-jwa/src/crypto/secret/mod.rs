@@ -6,145 +6,91 @@
 //! - AES-CBC with HMAC-SHA2 ([Section 5.2](https://www.rfc-editor.org/rfc/rfc7518#section-5.2))
 //! - AES-GCM ([Section 5.3](https://www.rfc-editor.org/rfc/rfc7518#section-5.3))
 
+#![cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
+
 #[cfg(feature = "aes-cbc-hmac")]
 mod aes_cbc_hmac;
 #[cfg(feature = "aes-gcm")]
 mod aes_gcm;
 mod enc;
 
-use core::error::Error;
-
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 use alloc::vec::Vec;
+use core::error::Error;
+use jose_b64::serde::{Bytes, Secret};
 
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-use digest::InvalidLength;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-use jose_b64::stream::Update;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 use rand_core::TryCryptoRng;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-pub use sha2::{Sha256, Sha384, Sha512};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, Zeroizing};
 
 use super::CipherError;
 
 #[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 pub use self::enc::*;
 
-/// Trait for content encryption keys used in JWE.
+/// Trait for keys that can encrypt content.
 ///
-/// This trait abstracts over different content encryption algorithms,
-/// providing a uniform interface for encryption and decryption operations.
-pub trait SecretKey<'a> {
-    /// The error type returned by encryption/decryption operations.
-    type CipherError: Error;
-    /// The encryptor type returned by the `encrypt` method.
-    type Encryptor: Encryptor;
-    /// The decryptor type returned by the `decrypt` method.
-    type Decryptor: Decryptor;
+/// This trait is implemented by keys that can perform content encryption
+/// for JWE. Encryption is done in one shot (not streaming) since AEAD
+/// algorithms require the full plaintext.
+pub trait EncryptingKey {
+    /// The error type returned by encryption operations.
+    type Error: Error;
 
-    /// Encrypts plaintext using the selected encryption algorithm.
+    /// Encrypt plaintext.
     ///
     /// # Arguments
-    ///
-    /// * `rng` - A cryptographically secure random number generator for IV/nonce generation
-    /// * `key` - The encryption key (length depends on the algorithm)
+    /// * `rng` - A cryptographically secure random number generator
     /// * `plaintext` - The data to encrypt
-    /// * `aad` - Additional authenticated data (AAD) that is integrity-protected but not encrypted
+    /// * `aad` - Additional authenticated data (integrity-protected but not encrypted)
     ///
     /// # Returns
-    ///
-    /// Returns `Ok(Encrypted)` containing the ciphertext, IV/nonce, and authentication tag,
-    /// or `Err(EncryptError)` if encryption fails.
-    ///
-    /// # Errors
-    ///
-    /// Returns `EncryptError::InvalidKeyLength` if the key length is incorrect for the algorithm.
-    /// Returns `EncryptError::InvalidIvLength` if IV generation fails.
-    /// Returns `EncryptError::Aead` for AEAD-specific errors.
+    /// Returns `Ok(Encrypted)` containing ciphertext, IV, and authentication tag.
     fn encrypt(
         &self,
-        rng: &mut impl TryCryptoRng,
-        key: impl AsRef<[u8]>,
+        rng: impl TryCryptoRng,
         plaintext: impl AsRef<[u8]>,
         aad: impl AsRef<[u8]>,
-    ) -> Result<Self::Encryptor, Self::CipherError>;
+    ) -> Result<Encrypted, Self::Error>;
+}
 
-    /// Decrypts ciphertext using the selected encryption algorithm.
+/// Trait for keys that can decrypt content.
+///
+/// This trait is implemented by keys that can perform content decryption
+/// for JWE. Decryption is done in one shot (not streaming) since AEAD
+/// algorithms require the full ciphertext.
+pub trait DecryptingKey {
+    /// The error type returned by decryption operations.
+    type Error: Error;
+
+    /// Decrypt ciphertext.
     ///
     /// # Arguments
-    ///
-    /// * `key` - The encryption key (length depends on the algorithm)
-    /// * `ciphertext` - The ciphertext to decrypt
-    /// * `aad` - Additional authenticated data (AAD) that is integrity-protected but not encrypted
-    /// * `tag` - The authentication tag for integrity verification
-    /// * `iv` - The initialization vector or nonce used for encryption
+    /// * `ciphertext` - The encrypted data
+    /// * `aad` - Additional authenticated data (must match encryption)
+    /// * `tag` - The authentication tag
+    /// * `iv` - The initialization vector or nonce
     ///
     /// # Returns
-    ///
-    /// Returns `Ok(Vec<u8>)` containing the plaintext, or `Err(DecryptError)` if decryption fails.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DecryptError::InvalidKeyLength` if the key length is incorrect for the algorithm.
-    /// Returns `DecryptError::Authentication` if authentication tag verification fails.
-    /// Returns `DecryptError::InvalidIvLength` if IV has an invalid length.
-    /// Returns `DecryptError::Aead` for AEAD-specific errors.
+    /// Returns `Ok(Secret)` containing the plaintext.
+    /// Returns `Err` if decryption or authentication fails.
     fn decrypt(
         &self,
-        key: impl AsRef<[u8]>,
         ciphertext: impl AsRef<[u8]>,
         aad: impl AsRef<[u8]>,
         tag: impl AsRef<[u8]>,
         iv: impl AsRef<[u8]>,
-    ) -> Result<Self::Decryptor, Self::CipherError>;
-}
-
-/// Trait for encryption operations.
-///
-/// Implementors of this trait can be used to incrementally encrypt data
-/// and then finalize to obtain the encrypted result.
-pub trait Encryptor: Update {
-    /// The error type returned when finalizing encryption.
-    type EncryptError: Error;
-
-    /// Finalizes the encryption and returns the encrypted result.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(Encrypted)` containing ciphertext, IV, and authentication tag.
-    fn finish(self) -> Result<Encrypted, Self::EncryptError>;
-}
-
-/// Trait for decryption operations.
-///
-/// Implementors of this trait can be used to incrementally decrypt data
-/// and then finalize to obtain the decrypted plaintext.
-pub trait Decryptor: Update {
-    /// The error type returned when finalizing decryption.
-    type DecryptError: Error;
-
-    /// Finalizes the decryption and returns the decrypted plaintext.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(Vec<u8>)` containing the plaintext.
-    fn finish(self) -> Result<Vec<u8>, Self::DecryptError>;
+    ) -> Result<Secret, Self::Error>;
 }
 
 /// The result of an encryption operation.
 ///
 /// Contains the encrypted data along with the parameters needed for decryption
 /// and integrity verification.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize)]
 pub struct Encrypted {
     /// The encrypted ciphertext.
-    pub ciphertext: Vec<u8>,
-    /// The encryption key used for the content encryption.
-    pub cek: Vec<u8>,
+    pub ciphertext: Bytes,
     /// The initialization vector or nonce used for encryption.
-    pub iv: Vec<u8>,
+    pub iv: Bytes,
     /// The authentication tag for integrity verification.
-    pub tag: Vec<u8>,
+    pub tag: Bytes,
 }

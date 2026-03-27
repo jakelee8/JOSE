@@ -7,6 +7,7 @@ use rsa::{pkcs1v15, pss};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::crypto::digest::KeyRefDigestState;
+use crate::crypto::sign::SigningKey;
 
 type SignerRs<'a, D> = KeyRefDigestState<'a, pkcs1v15::SigningKey<D>, D, pkcs1v15::Signature>;
 type SignerPs<'a, D> = KeyRefDigestState<'a, pss::SigningKey<D>, D, pss::Signature>;
@@ -25,26 +26,40 @@ pub type Ps384Signer<'a> = SignerPs<'a, Sha384>;
 /// PS512 (RSA-PSS + SHA-512) signer
 pub type Ps512Signer<'a> = SignerPs<'a, Sha512>;
 
-impl<'a, D> crate::SigningKey<'a> for pkcs1v15::SigningKey<D>
+impl<D> SigningKey for pkcs1v15::SigningKey<D>
 where
-    D: 'a + Digest,
+    D: Digest,
+    for<'a> SignerRs<'a, D>: From<&'a pkcs1v15::SigningKey<D>>,
 {
-    type StartError = Infallible;
-    type Signer = SignerRs<'a, D>;
+    type Error = Infallible;
+    type Signer<'a> = SignerRs<'a, D> where Self: 'a;
 
-    fn sign(&'a self) -> Result<Self::Signer, Self::StartError> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
         Ok(self.into())
+    }
+
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<jose_b64::serde::Bytes, Self::Error> {
+        let mut signer = self.signer()?;
+        signer.update(data)?;
+        signer.finish()
     }
 }
 
-impl<'a, D> crate::SigningKey<'a> for pss::SigningKey<D>
+impl<D> SigningKey for pss::SigningKey<D>
 where
-    D: 'a + Digest + FixedOutputReset,
+    D: Digest + FixedOutputReset,
+    for<'a> SignerPs<'a, D>: From<&'a pss::SigningKey<D>>,
 {
-    type StartError = Infallible;
-    type Signer = SignerPs<'a, D>;
+    type Error = Infallible;
+    type Signer<'a> = SignerPs<'a, D> where Self: 'a;
 
-    fn sign(&'a self) -> Result<Self::Signer, Self::StartError> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
         Ok(self.into())
+    }
+
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<jose_b64::serde::Bytes, Self::Error> {
+        let mut signer = self.signer()?;
+        signer.update(data)?;
+        signer.finish()
     }
 }
