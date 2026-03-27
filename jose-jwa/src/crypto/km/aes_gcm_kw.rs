@@ -26,11 +26,11 @@ use crate::crypto::CipherError;
 /// Type alias for AES-192-GCM with 96-bit nonce (for AES-GCM-KW).
 pub type Aes192Gcm = AesGcm<Aes192, U12>;
 
-/// AES-GCM Key Wrap key type for 128-bit keys.
+/// AES-GCM Key Wrap key type for 128-bit keys (`A128GCMKW`).
 pub type AesGcmKwKey128 = AesGcmKwKey<Aes128Gcm>;
-/// AES-GCM Key Wrap key type for 192-bit keys.
+/// AES-GCM Key Wrap key type for 192-bit keys (`A192GCMKW`).
 pub type AesGcmKwKey192 = AesGcmKwKey<Aes192Gcm>;
-/// AES-GCM Key Wrap key type for 256-bit keys.
+/// AES-GCM Key Wrap key type for 256-bit keys (`A256GCMKW`).
 pub type AesGcmKwKey256 = AesGcmKwKey<Aes256Gcm>;
 
 /// An AES-GCM Key Wrap key encryption key.

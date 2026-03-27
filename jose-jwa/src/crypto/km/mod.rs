@@ -19,7 +19,7 @@
 
 mod aes_gcm_kw;
 mod aes_kw;
-// mod ecdh;
+mod ecdh;
 mod pbes2;
 mod rsa_oaep;
 

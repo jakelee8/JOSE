@@ -28,23 +28,32 @@ use crate::crypto::{
 };
 
 // Type aliases for common curves
+
+/// ES256 (ECDSA + P-256 + SHA-256) signing key.
 #[cfg(feature = "p256")]
 pub type Es256SigningKey = EcdsaSigningKey<p256::NistP256>;
+/// ES256 (ECDSA + P-256 + SHA-256) verifying key.
 #[cfg(feature = "p256")]
 pub type Es256VerifyingKey = EcdsaVerifyingKey<p256::NistP256>;
 
+/// ES384 (ECDSA + P-384 + SHA-384) signing key.
 #[cfg(feature = "p384")]
 pub type Es384SigningKey = EcdsaSigningKey<p384::NistP384>;
+/// ES384 (ECDSA + P-384 + SHA-384) verifying key.
 #[cfg(feature = "p384")]
 pub type Es384VerifyingKey = EcdsaVerifyingKey<p384::NistP384>;
 
+/// ES512 (ECDSA + P-521 + SHA-512) signing key.
 #[cfg(feature = "p521")]
 pub type Es512SigningKey = EcdsaSigningKey<p521::NistP521>;
+/// ES512 (ECDSA + P-521 + SHA-512) verifying key.
 #[cfg(feature = "p521")]
 pub type Es512VerifyingKey = EcdsaVerifyingKey<p521::NistP521>;
 
+/// ES256K (ECDSA + secp256k1 + SHA-256) signing key.
 #[cfg(feature = "k256")]
 pub type Es256KSigningKey = EcdsaSigningKey<k256::Secp256k1>;
+/// ES256K (ECDSA + secp256k1 + SHA-256) verifying key.
 #[cfg(feature = "k256")]
 pub type Es256KVerifyingKey = EcdsaVerifyingKey<k256::Secp256k1>;
 

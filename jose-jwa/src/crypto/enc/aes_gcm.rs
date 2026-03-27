@@ -20,9 +20,17 @@ use rand_core::TryCryptoRng;
 use super::{CipherError, DecryptingKey, Encrypted, EncryptingKey};
 use crate::Encryption;
 
-/// Type aliases for common AES-GCM key sizes.
+/// AES-128-GCM content encryption key (128-bit key).
+///
+/// Used with the `A128GCM` algorithm per RFC 7518 Section 5.3.
 pub type Aes128GcmKey = AesGcmKey<aes::Aes128>;
+/// AES-192-GCM content encryption key (192-bit key).
+///
+/// Used with the `A192GCM` algorithm per RFC 7518 Section 5.3.
 pub type Aes192GcmKey = AesGcmKey<aes::Aes192>;
+/// AES-256-GCM content encryption key (256-bit key).
+///
+/// Used with the `A256GCM` algorithm per RFC 7518 Section 5.3.
 pub type Aes256GcmKey = AesGcmKey<aes::Aes256>;
 
 /// An AES-GCM content encryption key.
