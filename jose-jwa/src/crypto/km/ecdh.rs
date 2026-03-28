@@ -2,530 +2,312 @@
 //!
 //! Provides ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A192KW, ECDH-ES+A256KW algorithms
 //! for P-256, P-384, and P-521 curves per RFC 7518 Section 4.6.
+//!
+//! # Usage
+//!
+//! ## ECDH-ES Direct Key Agreement
+//!
+//! ```rust,ignore
+//! // Sender: generate ephemeral key, derive CEK
+//! let recipient_public = EcdhPublicKey::<p256::NistP256>::from_components(&x, &y)?;
+//! let ephemeral = EcdhSecretKey::<p256::NistP256>::random(rng)?;
+//! let cek = ephemeral.derive(&recipient_public, 128, b"A128GCM", Some(&apu), Some(&apv));
+//! // Serialize ephemeral.public_key() to JWE header as 'epk'
+//!
+//! // Recipient: use static key, derive same CEK
+//! let static_key = EcdhSecretKey::<p256::NistP256>::from_bytes(&d)?;
+//! let sender_epk = EcdhPublicKey::from_components(&epk_x, &epk_y)?;
+//! let cek = static_key.derive(&sender_epk, 128, b"A128GCM", Some(&apu), Some(&apv));
+//! ```
+//!
+//! ## ECDH-ES with Key Wrap (e.g., ECDH-ES+A128KW)
+//!
+//! ```rust,ignore
+//! // Sender: derive KEK, wrap CEK with AES-KW
+//! let kek = ephemeral.derive(&recipient_public, 128, b"ECDH-ES+A128KW", Some(&apu), Some(&apv));
+//! let wrapped_cek = AesKwKey128::try_from(kek)?.wrap(rng, &cek)?;
+//!
+//! // Recipient: derive same KEK, unwrap CEK
+//! let kek = static_key.derive(&sender_epk, 128, b"ECDH-ES+A128KW", Some(&apu), Some(&apv));
+//! let cek = AesKwKey128::try_from(kek)?.unwrap(&wrapped_cek)?;
+//! ```
 
 #![cfg(feature = "ecdh")]
 
 use alloc::vec;
-use alloc::vec::Vec;
-use core::marker::PhantomData;
+use core::fmt;
 
-use aes::cipher::BlockSizeUser;
-use aes_gcm::KeySizeUser;
-use aes_kw::aes::{Aes128, Aes192, Aes256};
-use aes_kw::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
-use aes_kw::{AesKw, IV_LEN};
-use digest::consts::U16;
-use digest::typenum::Unsigned;
 use digest::OutputSizeUser;
-use elliptic_curve::ecdh::diffie_hellman;
+use digest::typenum::Unsigned;
+use elliptic_curve::ecdh::{SharedSecret, diffie_hellman};
+use elliptic_curve::point::AffineCoordinates;
 use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
-use elliptic_curve::{CurveArithmetic, PublicKey, SecretKey};
+use elliptic_curve::{Curve, CurveArithmetic, Generate, PublicKey, SecretKey};
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use sha2::{Digest, Sha256};
 
-use super::{UnwrappingKey, WrappedKey, WrappingKey};
 use crate::crypto::CipherError;
-use crate::KeyManagement;
 
-/// ECDH-ES direct key agreement (no key wrapping, derives CEK directly).
-pub type EcdhEsDirect<C> = EcdhEsWrappingKey<C>;
-
-/// ECDH-ES using Concat KDF and CEK wrapped with "A128KW".
-pub type EcdhEsA128Kw<C> = EcdhEsKeyAgreement<C, Aes128>;
-/// ECDH-ES using Concat KDF and CEK wrapped with "A192KW".
-pub type EcdhEsA192Kw<C> = EcdhEsKeyAgreement<C, Aes192>;
-/// ECDH-ES using Concat KDF and CEK wrapped with "A256KW".
-pub type EcdhEsA256Kw<C> = EcdhEsKeyAgreement<C, Aes256>;
-
-/// ECDH-ES wrapping key for direct key agreement.
+/// Curve identifiers for ECDH operations.
 ///
-/// The sender uses their ephemeral private key and the recipient's public key
-/// to derive the CEK directly via Concat KDF.
-pub struct EcdhEsWrappingKey<C>
+/// This enum mirrors `jose_jwk::key::EcCurves` for use in the crypto layer.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EcCurves {
+    /// P-256 curve
+    P256,
+    /// P-384 curve
+    P384,
+    /// P-521 curve
+    P521,
+}
+
+/// ECDH public key.
+///
+/// Holds any EC public key (recipient's static key or sender's ephemeral key).
+/// This type is parameterized by the curve (`C`), which should be one of:
+/// - `p256::NistP256` for P-256
+/// - `p384::NistP384` for P-384
+/// - `p521::NistP521` for P-521
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Construct from JWK coordinates
+/// let pk = EcdhPublicKey::<p256::NistP256>::from_components(&x_bytes, &y_bytes)?;
+///
+/// // Serialize back to JWK
+/// let crv = pk.crv(); // EcCurves::P256
+/// let x = pk.x();     // Bytes
+/// let y = pk.y();     // Bytes
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct EcdhPublicKey<C: CurveArithmetic> {
+    inner: PublicKey<C>,
+}
+
+impl<C> EcdhPublicKey<C>
 where
     C: CurveArithmetic,
 {
-    secret: SecretKey<C>,
-    recipient_public: PublicKey<C>,
-    keydatalen: usize,
-    algorithm_id: &'static [u8],
-    apu: Vec<u8>,
-    apv: Vec<u8>,
+    /// Get the curve identifier (for JWK serialization).
+    pub fn crv(&self) -> EcCurves {
+        curve_to_ec_curves::<C>()
+    }
 }
 
-impl<C> EcdhEsWrappingKey<C>
+impl<C> EcdhPublicKey<C>
 where
     C: CurveArithmetic,
     C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
     C::FieldBytesSize: ModulusSize,
 {
-    /// Create a new ECDH-ES wrapping key.
+    /// Construct a public key from JWK `x` and `y` coordinates.
     ///
     /// # Arguments
-    /// * `secret` - The sender's ephemeral private key
-    /// * `recipient_public` - The recipient's public key
-    /// * `keydatalen` - The length of the key to derive in bits
-    /// * `algorithm_id` - The algorithm ID (e.g., b"A128GCM")
-    /// * `apu` - Agreement PartyUInfo (optional)
-    /// * `apv` - Agreement PartyVInfo (optional)
-    pub fn new(
-        secret: SecretKey<C>,
-        recipient_public: PublicKey<C>,
-        keydatalen: usize,
-        algorithm_id: &'static [u8],
-        apu: Option<impl AsRef<[u8]>>,
-        apv: Option<impl AsRef<[u8]>>,
-    ) -> Self {
-        Self {
-            secret,
-            recipient_public,
-            keydatalen,
-            algorithm_id,
-            apu: apu.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            apv: apv.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-        }
+    /// * `x` - The x-coordinate as bytes (must match curve field size)
+    /// * `y` - The y-coordinate as bytes (must match curve field size)
+    ///
+    /// # Errors
+    /// Returns `CipherError::InvalidKey` if the coordinates are invalid or the
+    /// point is not on the curve.
+    pub fn from_components(x: impl AsRef<[u8]>, y: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+        let x = x.as_ref().try_into().map_err(|_| CipherError::InvalidKey)?;
+        let y = y.as_ref().try_into().map_err(|_| CipherError::InvalidKey)?;
+
+        let point = AffineCoordinates::from_coordinates(&x, &y)
+            .into_option()
+            .ok_or(CipherError::InvalidKey)?;
+
+        let inner = PublicKey::from_affine(point).map_err(|_| CipherError::InvalidKey)?;
+
+        Ok(Self { inner })
     }
 
-    /// Generate a new ephemeral sender key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<SecretKey<C>, CipherError> {
-        let mut secret_bytes = elliptic_curve::FieldBytes::<C>::default();
-        rand_core::TryRng::try_fill_bytes(rng, &mut secret_bytes)
-            .map_err(|_| CipherError::Rng)?;
-        SecretKey::<C>::from_bytes(&secret_bytes).map_err(|_| CipherError::InvalidKey)
-    }
-
-    /// Get the key management algorithm.
-    pub fn alg(&self) -> KeyManagement {
-        KeyManagement::EcdhEs
-    }
-
-    /// Get the ephemeral public key (for JWE header `epk` field).
-    pub fn ephemeral_public(&self) -> PublicKey<C> {
-        self.secret.public_key()
-    }
-
-    /// Get the x-coordinate of the ephemeral public key as bytes.
+    /// Get the x-coordinate (JWK `x` parameter).
     pub fn x(&self) -> Bytes {
-        let public = self.secret.public_key();
-        let encoded = public.to_sec1_point(false);
-        let x = encoded.x().expect("public key has x-coordinate");
-        x.to_vec().into()
+        let encoded = self.inner.to_sec1_point(false);
+        encoded
+            .x()
+            .expect("uncompressed point has x")
+            .as_slice()
+            .to_vec()
+            .into()
     }
 
-    /// Get the y-coordinate of the ephemeral public key as bytes.
+    /// Get the y-coordinate (JWK `y` parameter).
     pub fn y(&self) -> Bytes {
-        let public = self.secret.public_key();
-        let encoded = public.to_sec1_point(false);
-        let y = encoded.y().expect("public key has y-coordinate");
-        y.to_vec().into()
-    }
-
-    /// Get the raw secret key bytes (JWK `d` parameter).
-    pub fn d(&self) -> Secret {
-        self.secret.to_bytes().as_slice().to_vec().into()
-    }
-
-    /// Get the recipient's public key (for verification).
-    pub fn recipient_public(&self) -> &PublicKey<C> {
-        &self.recipient_public
+        let encoded = self.inner.to_sec1_point(false);
+        encoded
+            .y()
+            .expect("uncompressed point has y")
+            .as_slice()
+            .to_vec()
+            .into()
     }
 }
 
-impl<C> WrappingKey for EcdhEsWrappingKey<C>
+impl<C> From<PublicKey<C>> for EcdhPublicKey<C>
 where
     C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
 {
-    type Error = CipherError;
-
-    fn wrap(
-        &self,
-        _rng: &mut impl TryCryptoRng,
-        _cek: impl AsRef<[u8]>,
-    ) -> Result<WrappedKey, Self::Error> {
-        // For ECDH-ES direct, we don't wrap the CEK - we derive it.
-        // This returns an empty encrypted key; the CEK is derived from the shared secret.
-        // The caller should use the derived key directly via the unwrapping side.
-        Ok(WrappedKey {
-            encrypted_key: vec![].into(),
-            iv: None,
-            tag: None,
-            salt: None,
-        })
+    fn from(inner: PublicKey<C>) -> Self {
+        Self { inner }
     }
 }
 
-/// ECDH-ES unwrapping key for direct key agreement (recipient side).
+impl<C> From<EcdhPublicKey<C>> for PublicKey<C>
+where
+    C: CurveArithmetic,
+{
+    fn from(key: EcdhPublicKey<C>) -> Self {
+        key.inner
+    }
+}
+
+/// ECDH secret key.
 ///
-/// The recipient uses their private key and the sender's ephemeral public key
-/// to derive the same CEK that the sender derived.
-pub struct EcdhEsUnwrappingKey<C>
-where
-    C: CurveArithmetic,
-{
-    secret: SecretKey<C>,
-    sender_public: PublicKey<C>,
-    keydatalen: usize,
-    algorithm_id: &'static [u8],
-    apu: Vec<u8>,
-    apv: Vec<u8>,
+/// Used for static recipient keys and ephemeral sender keys. This type wraps
+/// `elliptic_curve::SecretKey<C>` and provides JWK-compatible serialization.
+///
+/// # Security
+///
+/// The secret key material is automatically zeroized when this type is dropped.
+/// This type does not implement `Clone` or `Copy` to prevent accidental key duplication.
+pub struct EcdhSecretKey<C: Curve> {
+    inner: SecretKey<C>,
 }
 
-impl<C> EcdhEsUnwrappingKey<C>
+impl<C: Curve> fmt::Debug for EcdhSecretKey<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct(core::any::type_name::<Self>())
+            .finish_non_exhaustive()
+    }
+}
+
+impl<C> EcdhSecretKey<C>
 where
     C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
 {
-    /// Create a new ECDH-ES unwrapping key.
+    /// Construct a secret key from JWK `d` scalar bytes.
     ///
     /// # Arguments
-    /// * `secret` - The recipient's private key
-    /// * `sender_public` - The sender's ephemeral public key (from JWE header `epk`)
-    /// * `keydatalen` - The length of the key to derive in bits
-    /// * `algorithm_id` - The algorithm ID (e.g., b"A128GCM")
-    /// * `apu` - Agreement PartyUInfo (optional)
-    /// * `apv` - Agreement PartyVInfo (optional)
-    pub fn new(
-        secret: SecretKey<C>,
-        sender_public: PublicKey<C>,
-        keydatalen: usize,
-        algorithm_id: &'static [u8],
-        apu: Option<impl AsRef<[u8]>>,
-        apv: Option<impl AsRef<[u8]>>,
-    ) -> Self {
-        Self {
-            secret,
-            sender_public,
-            keydatalen,
-            algorithm_id,
-            apu: apu.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            apv: apv.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-        }
+    /// * `d` - The private scalar as bytes
+    ///
+    /// # Errors
+    /// Returns `CipherError::InvalidKey` if the scalar is zero or >= curve order.
+    pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+        let inner = SecretKey::<C>::from_slice(d.as_ref()).map_err(|_| CipherError::InvalidKey)?;
+        Ok(Self { inner })
     }
 
-    /// Get the key management algorithm.
-    pub fn alg(&self) -> KeyManagement {
-        KeyManagement::EcdhEs
+    /// Generate a new random secret key.
+    ///
+    /// # Arguments
+    /// * `rng` - A cryptographically secure random number generator
+    ///
+    /// # Errors
+    /// Returns `CipherError::Rng` if the RNG fails.
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+        let inner = SecretKey::try_generate_from_rng(rng).map_err(|_| CipherError::Rng)?;
+        Ok(Self { inner })
     }
 
-    /// Get the x-coordinate of the sender's ephemeral public key.
-    pub fn sender_x(&self) -> Bytes {
-        let encoded = self.sender_public.to_sec1_point(false);
-        let x = encoded.x().expect("public key has x-coordinate");
-        x.to_vec().into()
+    /// Get the curve identifier (for JWK serialization).
+    pub fn crv(&self) -> EcCurves {
+        curve_to_ec_curves::<C>()
     }
 
-    /// Get the y-coordinate of the sender's ephemeral public key.
-    pub fn sender_y(&self) -> Bytes {
-        let encoded = self.sender_public.to_sec1_point(false);
-        let y = encoded.y().expect("public key has y-coordinate");
-        y.to_vec().into()
-    }
-}
-
-impl<C> UnwrappingKey for EcdhEsUnwrappingKey<C>
-where
-    C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
-{
-    type Error = CipherError;
-
-    fn unwrap(&self, _wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
-        // Perform ECDH to get the shared secret
-        let z = diffie_hellman::<C>(
-            self.secret.to_nonzero_scalar().clone(),
-            self.sender_public.as_affine(),
-        );
-
-        // Derive the key using Concat KDF
-        let derived = concat_kdf(
-            z.raw_secret_bytes().as_slice(),
-            self.keydatalen,
-            self.algorithm_id,
-            Some(&self.apu),
-            Some(&self.apv),
-        );
-
-        Ok(derived.into())
-    }
-}
-
-/// ECDH-ES key agreement with AES Key Wrap.
-///
-/// This type handles both the ECDH key agreement and the AES-KW wrapping
-/// of the Content Encryption Key.
-pub struct EcdhEsKeyAgreement<C, A>
-where
-    C: CurveArithmetic,
-{
-    wrapping_key: Secret,
-    encrypted_key: Bytes,
-    _curve: PhantomData<C>,
-    _aes: PhantomData<A>,
-}
-
-/// ECDH-ES wrapping key for key agreement with AES Key Wrap (sender side).
-///
-/// This type derives a wrapping key from the ECDH shared secret and uses
-/// it to wrap the Content Encryption Key with AES-KW.
-pub struct EcdhEsKeyAgreementWrappingKey<C, A>
-where
-    C: CurveArithmetic,
-{
-    secret: SecretKey<C>,
-    recipient_public: PublicKey<C>,
-    keydatalen: usize,
-    algorithm_id: &'static [u8],
-    apu: Vec<u8>,
-    apv: Vec<u8>,
-    _aes: PhantomData<A>,
-}
-
-impl<C, A> EcdhEsKeyAgreementWrappingKey<C, A>
-where
-    C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
-    A: KeyInit + KeySizeUser,
-{
-    /// Create a new ECDH-ES+AesKw wrapping key.
-    pub fn new(
-        secret: SecretKey<C>,
-        recipient_public: PublicKey<C>,
-        keydatalen: usize,
-        algorithm_id: &'static [u8],
-        apu: Option<impl AsRef<[u8]>>,
-        apv: Option<impl AsRef<[u8]>>,
-    ) -> Self {
-        Self {
-            secret,
-            recipient_public,
-            keydatalen,
-            algorithm_id,
-            apu: apu.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            apv: apv.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            _aes: PhantomData,
-        }
-    }
-
-    /// Generate a new ephemeral sender key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<SecretKey<C>, CipherError> {
-        EcdhEsWrappingKey::<C>::random(rng)
-    }
-
-    /// Get the key management algorithm.
-    pub fn alg(&self) -> KeyManagement {
-        match self.keydatalen {
-            128 => KeyManagement::EcdhEsA128Kw,
-            192 => KeyManagement::EcdhEsA192Kw,
-            256 => KeyManagement::EcdhEsA256Kw,
-            _ => KeyManagement::EcdhEsA256Kw, // Default fallback
-        }
-    }
-
-    /// Get the ephemeral public key (for JWE header `epk` field).
-    pub fn ephemeral_public(&self) -> PublicKey<C> {
-        self.secret.public_key()
-    }
-
-    /// Get the x-coordinate of the ephemeral public key.
-    pub fn x(&self) -> Bytes {
-        let public = self.secret.public_key();
-        let encoded = public.to_sec1_point(false);
-        let x = encoded.x().expect("public key has x-coordinate");
-        x.to_vec().into()
-    }
-
-    /// Get the y-coordinate of the ephemeral public key.
-    pub fn y(&self) -> Bytes {
-        let public = self.secret.public_key();
-        let encoded = public.to_sec1_point(false);
-        let y = encoded.y().expect("public key has y-coordinate");
-        y.to_vec().into()
-    }
-
-    /// Get the raw secret key bytes (JWK `d` parameter).
+    /// Get the private scalar bytes (JWK `d` parameter).
     pub fn d(&self) -> Secret {
-        self.secret.to_bytes().as_slice().to_vec().into()
+        self.inner.to_bytes().as_slice().to_vec().into()
     }
 
-    fn derive_wrapping_key(&self) -> Result<Secret, CipherError> {
-        // Perform ECDH
-        let z = diffie_hellman::<C>(
-            self.secret.to_nonzero_scalar().clone(),
-            self.recipient_public.as_affine(),
-        );
-
-        // Derive the wrapping key using Concat KDF
-        let derived = concat_kdf(
-            z.raw_secret_bytes().as_slice(),
-            self.keydatalen,
-            self.algorithm_id,
-            Some(&self.apu),
-            Some(&self.apv),
-        );
-
-        Ok(derived.into())
+    /// Derive the public key from this secret key.
+    pub fn public_key(&self) -> EcdhPublicKey<C> {
+        self.inner.public_key().into()
     }
-}
 
-impl<C, A> WrappingKey for EcdhEsKeyAgreementWrappingKey<C, A>
-where
-    C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
-    A: BlockCipherEncrypt<BlockSize = U16> + BlockSizeUser + KeyInit + KeySizeUser,
-{
-    type Error = CipherError;
-
-    fn wrap(
+    /// Derive a key from ECDH key agreement and the concat KDF (RFC 7518 Section 4.6.2).
+    ///
+    /// Performs DH with `other`, then runs the result through the concat KDF to produce
+    /// `keydatalen` bits of key material. Pass the JWE `alg` value as `algorithm_id`
+    /// (e.g. `b"A128GCM"` for direct or `b"ECDH-ES+A128KW"` for key wrap).
+    pub fn derive(
         &self,
-        _rng: &mut impl TryCryptoRng,
-        cek: impl AsRef<[u8]>,
-    ) -> Result<WrappedKey, Self::Error> {
-        // Derive the wrapping key from ECDH
-        let wrapping_key = self.derive_wrapping_key()?;
-
-        // Create AES-KW instance
-        let kw = AesKw::<A>::new_from_slice(wrapping_key.as_ref())
-            .map_err(|_| CipherError::InvalidKeyLength)?;
-
-        // Wrap the CEK
-        let cek = cek.as_ref();
-        let mut encrypted_cek = vec![0u8; cek.len() + IV_LEN];
-
-        let len = kw
-            .wrap_key(cek, &mut encrypted_cek)
-            .map_err(|_| CipherError::Aead)?
-            .len();
-
-        encrypted_cek.resize(len, 0);
-
-        Ok(WrappedKey {
-            encrypted_key: encrypted_cek.into(),
-            iv: None,
-            tag: None,
-            salt: None,
-        })
-    }
-}
-
-/// ECDH-ES unwrapping key for key agreement with AES Key Wrap (recipient side).
-///
-/// This type derives a wrapping key from the ECDH shared secret and uses
-/// it to unwrap the Content Encryption Key with AES-KW.
-pub struct EcdhEsKeyAgreementUnwrappingKey<C, A>
-where
-    C: CurveArithmetic,
-{
-    secret: SecretKey<C>,
-    sender_public: PublicKey<C>,
-    keydatalen: usize,
-    algorithm_id: &'static [u8],
-    apu: Vec<u8>,
-    apv: Vec<u8>,
-    _aes: PhantomData<A>,
-}
-
-impl<C, A> EcdhEsKeyAgreementUnwrappingKey<C, A>
-where
-    C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
-    A: KeyInit + KeySizeUser,
-{
-    /// Create a new ECDH-ES+AesKw unwrapping key.
-    pub fn new(
-        secret: SecretKey<C>,
-        sender_public: PublicKey<C>,
+        other: &EcdhPublicKey<C>,
         keydatalen: usize,
-        algorithm_id: &'static [u8],
+        algorithm_id: impl AsRef<[u8]>,
         apu: Option<impl AsRef<[u8]>>,
         apv: Option<impl AsRef<[u8]>>,
-    ) -> Self {
-        Self {
-            secret,
-            sender_public,
-            keydatalen,
-            algorithm_id,
-            apu: apu.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            apv: apv.map(|s| s.as_ref().to_vec()).unwrap_or_default(),
-            _aes: PhantomData,
-        }
+    ) -> Secret {
+        let z = self.agree(other);
+        concat_kdf(z.raw_secret_bytes(), keydatalen, algorithm_id, apu, apv)
     }
 
-    /// Get the key management algorithm.
-    pub fn alg(&self) -> KeyManagement {
-        match self.keydatalen {
-            128 => KeyManagement::EcdhEsA128Kw,
-            192 => KeyManagement::EcdhEsA192Kw,
-            256 => KeyManagement::EcdhEsA256Kw,
-            _ => KeyManagement::EcdhEsA256Kw,
-        }
-    }
-
-    fn derive_wrapping_key(&self) -> Result<Secret, CipherError> {
-        // Perform ECDH
-        let z = diffie_hellman::<C>(
-            self.secret.to_nonzero_scalar().clone(),
-            self.sender_public.as_affine(),
-        );
-
-        // Derive the wrapping key using Concat KDF
-        let derived = concat_kdf(
-            z.raw_secret_bytes().as_slice(),
-            self.keydatalen,
-            self.algorithm_id,
-            Some(&self.apu),
-            Some(&self.apv),
-        );
-
-        Ok(derived.into())
+    fn agree(&self, other: &EcdhPublicKey<C>) -> SharedSecret<C> {
+        diffie_hellman::<C>(self.inner.to_nonzero_scalar(), other.inner.as_affine())
     }
 }
 
-impl<C, A> UnwrappingKey for EcdhEsKeyAgreementUnwrappingKey<C, A>
+impl<C> From<SecretKey<C>> for EcdhSecretKey<C>
 where
     C: CurveArithmetic,
-    C::AffinePoint: FromSec1Point<C> + ToSec1Point<C>,
-    C::FieldBytesSize: ModulusSize,
-    A: BlockCipherDecrypt<BlockSize = U16> + BlockSizeUser + KeyInit + KeySizeUser,
 {
-    type Error = CipherError;
-
-    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
-        // Derive the wrapping key from ECDH
-        let wrapping_key = self.derive_wrapping_key()?;
-
-        // Create AES-KW instance
-        let kw = AesKw::<A>::new_from_slice(wrapping_key.as_ref())
-            .map_err(|_| CipherError::InvalidKeyLength)?;
-
-        // Unwrap the CEK
-        let encrypted_cek = wrapped_key.encrypted_key.as_ref();
-        let mut buf = vec![0u8; encrypted_cek.len().saturating_sub(IV_LEN)];
-
-        kw.unwrap_key(encrypted_cek, &mut buf)
-            .map_err(|_| CipherError::Aead)?;
-
-        Ok(buf.into())
+    fn from(inner: SecretKey<C>) -> Self {
+        Self { inner }
     }
 }
 
-/// Concatenation KDF for ECDH-ES per RFC 7518 Section 4.6.2.
+impl<C> From<EcdhSecretKey<C>> for SecretKey<C>
+where
+    C: CurveArithmetic,
+{
+    fn from(key: EcdhSecretKey<C>) -> Self {
+        key.inner
+    }
+}
+
+/// Map a curve type to the EcCurves enum.
+///
+/// This function provides compile-time dispatch from the Rust curve type
+/// to the JOSE curve identifier.
+fn curve_to_ec_curves<C>() -> EcCurves
+where
+    C: CurveArithmetic,
+{
+    // We use the size of the field to identify curves
+    // This works because each NIST curve has a unique field size
+    let field_size = <C as Curve>::FieldBytesSize::USIZE;
+
+    match field_size {
+        32 => EcCurves::P256,
+        48 => EcCurves::P384,
+        66 => EcCurves::P521,
+        _ => panic!("unsupported curve with field size {}", field_size),
+    }
+}
+
+/// Concatenation KDF per RFC 7518 Section 4.6.2 / NIST.800-56A Section 5.8.1.
 ///
 /// Uses SHA-256 as the hash function. Derives keying material of `keydatalen` bits.
+///
+/// # Arguments
+/// * `z` - The shared secret from ECDH key agreement
+/// * `keydatalen` - The length of the key to derive in bits
+/// * `algorithm_id` - The algorithm ID (e.g., b"A128GCM")
+/// * `apu` - Agreement PartyUInfo (optional)
+/// * `apv` - Agreement PartyVInfo (optional)
+///
+/// # Returns
+/// The derived key as a `Secret` (zeroized on drop).
 fn concat_kdf(
     z: impl AsRef<[u8]>,
     keydatalen: usize,
     algorithm_id: impl AsRef<[u8]>,
     apu: Option<impl AsRef<[u8]>>,
     apv: Option<impl AsRef<[u8]>>,
-) -> Vec<u8> {
+) -> Secret {
     let z = z.as_ref();
 
     let algorithm_id = algorithm_id.as_ref();
@@ -558,44 +340,126 @@ fn concat_kdf(
         i += 1;
     }
 
-    derived
+    derived.into()
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Simple test RNG that panics if asked for random bytes
-    /// (we use deterministic keys in tests)
-    struct TestRng;
-
-    impl rand_core::TryRng for TestRng {
-        type Error = core::convert::Infallible;
-
-        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-            panic!("TestRng should not be used for randomness")
-        }
-
-        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
-            panic!("TestRng should not be used for randomness")
-        }
-
-        fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), Self::Error> {
-            // For key generation in tests, we use pre-generated keys
-            // This won't be called if we construct keys from bytes
-            Ok(())
-        }
-    }
-
-    impl TryCryptoRng for TestRng {}
-
     /// Test vectors from RFC 7518 Appendix C - Example ECDH-ES Key Agreement Computation
     #[test]
-    fn ecdh_es_p256_rfc7518_appendix_c() {
+    fn ecdh_p256_rfc7518_appendix_c() {
+        // Alice's ephemeral private key (sender)
+        let alice_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+        // Bob's static private key (recipient)
+        let bob_d: [u8; 32] = [
+            0x54, 0x49, 0x83, 0x66, 0x90, 0xd7, 0x5c, 0xaf, 0x29, 0xf0, 0xdd, 0x02, 0x9d, 0xdb,
+            0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
+            0x17, 0xd4, 0xa9, 0xdc,
+        ];
+        // Expected shared secret Z
+        let expected_z: [u8; 32] = [
+            0x9e, 0x56, 0xd9, 0x1d, 0x81, 0x71, 0x35, 0xd3, 0x72, 0x83, 0x42, 0x83, 0xbf, 0x84,
+            0x26, 0x9c, 0xfb, 0x31, 0x6e, 0xa3, 0xda, 0x80, 0x6a, 0x48, 0xf6, 0xda, 0xa7, 0x79,
+            0x8c, 0xfe, 0x90, 0xc4,
+        ];
+
+        // Create keys
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&bob_d).unwrap();
+        let bob_public = bob_secret.public_key();
+        let alice_public = alice_secret.public_key();
+
+        // Both sides compute the same shared secret
+        let z_alice = alice_secret.agree(&bob_public);
+        let z_bob = bob_secret.agree(&alice_public);
+
+        assert_eq!(
+            z_alice.raw_secret_bytes().as_ref(),
+            expected_z,
+            "Alice's Z does not match expected"
+        );
+        assert_eq!(
+            z_bob.raw_secret_bytes().as_ref(),
+            expected_z,
+            "Bob's Z does not match expected"
+        );
+        assert_eq!(
+            z_alice.raw_secret_bytes(),
+            z_bob.raw_secret_bytes(),
+            "Shared secrets don't match"
+        );
+    }
+
+    #[test]
+    fn ecdh_public_key_jwk_export() {
+        // Use deterministic test keys from RFC 7518
+        let alice_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let alice_public = alice_secret.public_key();
+
+        // Verify JWK export functions
+        assert_eq!(alice_public.crv(), EcCurves::P256);
+        assert_eq!(alice_secret.d().as_ref(), alice_d);
+        assert_eq!(alice_public.x().as_ref().len(), 32);
+        assert_eq!(alice_public.y().as_ref().len(), 32);
+    }
+
+    #[test]
+    fn ecdh_secret_key_jwk_export() {
+        let bob_d: [u8; 32] = [
+            0x54, 0x49, 0x83, 0x66, 0x90, 0xd7, 0x5c, 0xaf, 0x29, 0xf0, 0xdd, 0x02, 0x9d, 0xdb,
+            0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
+            0x17, 0xd4, 0xa9, 0xdc,
+        ];
+
+        let bob_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&bob_d).unwrap();
+        let bob_public = bob_secret.public_key();
+
+        // Verify JWK export functions
+        assert_eq!(bob_secret.crv(), EcCurves::P256);
+        assert_eq!(bob_secret.d().as_ref(), bob_d);
+        assert_eq!(bob_public.x().as_ref().len(), 32);
+        assert_eq!(bob_public.y().as_ref().len(), 32);
+    }
+
+    #[test]
+    fn ecdh_public_key_from_components() {
+        // Alice's ephemeral key from RFC 7518
+        let alice_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let alice_public = alice_secret.public_key();
+
+        // Get x and y
+        let x = alice_public.x();
+        let y = alice_public.y();
+
+        // Reconstruct public key from components
+        let reconstructed =
+            EcdhPublicKey::<p256::NistP256>::from_components(x.as_ref(), y.as_ref()).unwrap();
+
+        // Should be the same key
+        assert_eq!(alice_public, reconstructed);
+    }
+
+    #[test]
+    fn ecdh_roundtrip_p256() {
+        // Use deterministic test keys from RFC 7518 Appendix C
         let alice_d: [u8; 32] = [
             0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
             0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
@@ -606,7 +470,133 @@ mod tests {
             0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
             0x17, 0xd4, 0xa9, 0xdc,
         ];
-        let _expected_z: [u8; 32] = [
+
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&bob_d).unwrap();
+        let bob_public = bob_secret.public_key();
+
+        // Both sides agree
+        let z1 = alice_secret.agree(&bob_public);
+        let z2 = bob_secret.agree(&alice_secret.public_key());
+
+        assert_eq!(z1.raw_secret_bytes(), z2.raw_secret_bytes());
+    }
+
+    #[test]
+    fn ecdh_roundtrip_p384() {
+        // Use deterministic test keys
+        let alice_d: [u8; 48] = [
+            0x64, 0xdf, 0x86, 0x36, 0xee, 0x2f, 0x59, 0x70, 0x8d, 0x93, 0xe4, 0x02, 0x82, 0x5d,
+            0x41, 0x9e, 0x0c, 0x5f, 0xa9, 0x0e, 0x8d, 0x97, 0x1a, 0x12, 0xbf, 0x1a, 0x6b, 0x9f,
+            0xd9, 0xf8, 0x4e, 0x5c, 0x8b, 0x5e, 0x5d, 0x12, 0x14, 0x47, 0x1e, 0x52, 0x67, 0x81,
+            0x5d, 0xab, 0xbe, 0x8c, 0xa1, 0x43,
+        ];
+        let bob_d: [u8; 48] = [
+            0x12, 0xdd, 0x65, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
+        ];
+
+        let alice_secret = EcdhSecretKey::<p384::NistP384>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p384::NistP384>::from_bytes(&bob_d).unwrap();
+        let bob_public = bob_secret.public_key();
+
+        // Both sides agree
+        let z1 = alice_secret.agree(&bob_public);
+        let z2 = bob_secret.agree(&alice_secret.public_key());
+
+        assert_eq!(z1.raw_secret_bytes(), z2.raw_secret_bytes());
+    }
+
+    #[test]
+    fn ecdh_roundtrip_p521() {
+        // Use deterministic test keys (small scalars guaranteed to be valid)
+        let alice_d: [u8; 66] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        ];
+        let bob_d: [u8; 66] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+        ];
+
+        let alice_secret = EcdhSecretKey::<p521::NistP521>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p521::NistP521>::from_bytes(&bob_d).unwrap();
+        let bob_public = bob_secret.public_key();
+
+        // Both sides agree
+        let z1 = alice_secret.agree(&bob_public);
+        let z2 = bob_secret.agree(&alice_secret.public_key());
+
+        assert_eq!(z1.raw_secret_bytes(), z2.raw_secret_bytes());
+    }
+
+    #[test]
+    fn ecdh_secret_key_from_bytes_invalid() {
+        // Zero scalar should be invalid
+        let zero = [0u8; 32];
+        assert!(EcdhSecretKey::<p256::NistP256>::from_bytes(&zero).is_err());
+
+        // All 0xFF should be invalid (>= curve order)
+        let invalid = [0xFFu8; 32];
+        assert!(EcdhSecretKey::<p256::NistP256>::from_bytes(&invalid).is_err());
+    }
+
+    #[test]
+    fn ecdh_public_key_from_components_invalid() {
+        // Invalid x (all zeros) - this is valid point encoding but may not be on curve
+        // We just check that it returns an error for obviously wrong input
+        let x = [0u8; 32];
+        let y = [0u8; 32];
+        assert!(EcdhPublicKey::<p256::NistP256>::from_components(&x, &y).is_err());
+    }
+
+    #[test]
+    fn ecdh_curve_detection() {
+        // Use valid scalars from RFC test vectors
+        let p256_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+        let p384_d: [u8; 48] = [
+            0x64, 0xdf, 0x86, 0x36, 0xee, 0x2f, 0x59, 0x70, 0x8d, 0x93, 0xe4, 0x02, 0x82, 0x5d,
+            0x41, 0x9e, 0x0c, 0x5f, 0xa9, 0x0e, 0x8d, 0x97, 0x1a, 0x12, 0xbf, 0x1a, 0x6b, 0x9f,
+            0xd9, 0xf8, 0x4e, 0x5c, 0x8b, 0x5e, 0x5d, 0x12, 0x14, 0x47, 0x1e, 0x52, 0x67, 0x81,
+            0x5d, 0xab, 0xbe, 0x8c, 0xa1, 0x43,
+        ];
+        let p521_d: [u8; 66] = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+            0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a,
+            0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+            0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42,
+        ];
+
+        let p256_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&p256_d).unwrap();
+        let p384_secret = EcdhSecretKey::<p384::NistP384>::from_bytes(&p384_d).unwrap();
+        let p521_secret = EcdhSecretKey::<p521::NistP521>::from_bytes(&p521_d).unwrap();
+
+        assert_eq!(p256_secret.crv(), EcCurves::P256);
+        assert_eq!(p384_secret.crv(), EcCurves::P384);
+        assert_eq!(p521_secret.crv(), EcCurves::P521);
+
+        assert_eq!(p256_secret.public_key().crv(), EcCurves::P256);
+        assert_eq!(p384_secret.public_key().crv(), EcCurves::P384);
+        assert_eq!(p521_secret.public_key().crv(), EcCurves::P521);
+    }
+
+    /// Test vectors from RFC 7518 Appendix C - Example ECDH-ES Key Agreement Computation
+    #[test]
+    fn concat_kdf_rfc7518_appendix_c() {
+        let expected_z: [u8; 32] = [
             0x9e, 0x56, 0xd9, 0x1d, 0x81, 0x71, 0x35, 0xd3, 0x72, 0x83, 0x42, 0x83, 0xbf, 0x84,
             0x26, 0x9c, 0xfb, 0x31, 0x6e, 0xa3, 0xda, 0x80, 0x6a, 0x48, 0xf6, 0xda, 0xa7, 0x79,
             0x8c, 0xfe, 0x90, 0xc4,
@@ -616,78 +606,24 @@ mod tests {
             0x10, 0x1a,
         ];
 
-        let alice_secret = SecretKey::<p256::NistP256>::from_slice(&alice_d).unwrap();
-        let bob_secret = SecretKey::<p256::NistP256>::from_slice(&bob_d).unwrap();
-        let bob_public = bob_secret.public_key();
-
-        // Sender (Alice) side - wrap derives the CEK
-        let _wrap_key = EcdhEsWrappingKey::<p256::NistP256>::new(
-            alice_secret.clone(),
-            bob_public,
-            128,
-            b"A128GCM",
-            Some(b"Alice"),
-            Some(b"Bob"),
-        );
-
-        // Recipient (Bob) side - unwrap derives the same CEK
-        let alice_public = alice_secret.public_key();
-        let _unwrap_key = EcdhEsUnwrappingKey::<p256::NistP256>::new(
-            bob_secret.clone(),
-            alice_public,
-            128,
-            b"A128GCM",
-            Some(b"Alice"),
-            Some(b"Bob"),
-        );
-
-        // For direct ECDH-ES, we need to manually derive because wrap/unwrap
-        // handle the ECDH exchange differently
-        let z = diffie_hellman::<p256::NistP256>(
-            alice_secret.to_nonzero_scalar().clone(),
-            bob_public.as_affine(),
-        );
-
-        let derived_cek = concat_kdf(
-            z.raw_secret_bytes().as_slice(),
-            128,
-            b"A128GCM",
-            Some(b"Alice"),
-            Some(b"Bob"),
-        );
+        let derived_cek = concat_kdf(&expected_z, 128, b"A128GCM", Some(b"Alice"), Some(b"Bob"));
 
         assert_eq!(
-            derived_cek.as_slice(),
+            derived_cek.as_ref(),
             expected_cek,
             "Derived CEK does not match RFC 7518 expected value"
         );
-
-        // Verify commutativity: Bob derives the same key
-        let z_bob = diffie_hellman::<p256::NistP256>(
-            bob_secret.to_nonzero_scalar().clone(),
-            alice_public.as_affine(),
-        );
-
-        let derived_bob = concat_kdf(
-            z_bob.raw_secret_bytes().as_slice(),
-            128,
-            b"A128GCM",
-            Some(b"Alice"),
-            Some(b"Bob"),
-        );
-
-        assert_eq!(derived_bob.as_slice(), expected_cek);
     }
 
     #[test]
     fn concat_kdf_different_algorithms() {
         let z = [0xab; 32];
         let cek_256 = concat_kdf(&z, 256, b"A256GCM", None::<&[u8]>, None::<&[u8]>);
-        assert_eq!(cek_256.len(), 32);
+        assert_eq!(cek_256.as_ref().len(), 32);
         let cek_192 = concat_kdf(&z, 192, b"A192GCM", None::<&[u8]>, None::<&[u8]>);
-        assert_eq!(cek_192.len(), 24);
+        assert_eq!(cek_192.as_ref().len(), 24);
         let cek_128 = concat_kdf(&z, 128, b"A128GCM", None::<&[u8]>, None::<&[u8]>);
-        assert_eq!(cek_128.len(), 16);
+        assert_eq!(cek_128.as_ref().len(), 16);
     }
 
     #[test]
@@ -695,106 +631,6 @@ mod tests {
         let z = [0xcd; 32];
         let cek_empty = concat_kdf(&z, 128, b"A128GCM", None::<&[u8]>, None::<&[u8]>);
         let cek_explicit = concat_kdf(&z, 128, b"A128GCM", Some(&[]), Some(&[]));
-        assert_eq!(cek_empty.as_slice(), cek_explicit.as_slice());
-    }
-
-    #[test]
-    fn ecdh_es_key_agreement_wrap_unwrap_p256() {
-        // Use deterministic test keys (from RFC 7518 Appendix C test vectors)
-        let recipient_d: [u8; 32] = [
-            0x54, 0x49, 0x83, 0x66, 0x90, 0xd7, 0x5c, 0xaf, 0x29, 0xf0, 0xdd, 0x02, 0x9d, 0xdb,
-            0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
-            0x17, 0xd4, 0xa9, 0xdc,
-        ];
-        let sender_d: [u8; 32] = [
-            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
-            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
-            0x3a, 0x13, 0x98, 0x8a,
-        ];
-
-        let recipient_secret = SecretKey::<p256::NistP256>::from_slice(&recipient_d).unwrap();
-        let recipient_public = recipient_secret.public_key();
-
-        let sender_secret = SecretKey::<p256::NistP256>::from_slice(&sender_d).unwrap();
-
-        // Create wrapping key
-        let wrap_key = EcdhEsKeyAgreementWrappingKey::<p256::NistP256, Aes128>::new(
-            sender_secret.clone(),
-            recipient_public,
-            128,
-            b"ECDH-ES+A128KW",
-            None::<&[u8]>,
-            None::<&[u8]>,
-        );
-
-        let cek = [
-            0x12u8, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a,
-            0xbc, 0xde, 0xf0,
-        ];
-
-        let wrapped = wrap_key
-            .wrap(&mut TestRng, &cek)
-            .unwrap();
-
-        // Recipient unwraps using their private key and sender's ephemeral public key
-        let unwrap_key = EcdhEsKeyAgreementUnwrappingKey::<p256::NistP256, Aes128>::new(
-            recipient_secret,
-            sender_secret.public_key(),
-            128,
-            b"ECDH-ES+A128KW",
-            None::<&[u8]>,
-            None::<&[u8]>,
-        );
-
-        let unwrapped = unwrap_key.unwrap(&wrapped).unwrap();
-        assert_eq!(unwrapped.as_ref(), &cek);
-    }
-
-    #[test]
-    fn ecdh_es_key_agreement_wrap_unwrap_p384() {
-        // Use deterministic test keys
-        let recipient_d: [u8; 48] = [
-            0x64, 0xdf, 0x86, 0x36, 0xee, 0x2f, 0x59, 0x70, 0x8d, 0x93, 0xe4, 0x02,
-            0x82, 0x5d, 0x41, 0x9e, 0x0c, 0x5f, 0xa9, 0x0e, 0x8d, 0x97, 0x1a, 0x12,
-            0xbf, 0x1a, 0x6b, 0x9f, 0xd9, 0xf8, 0x4e, 0x5c, 0x8b, 0x5e, 0x5d, 0x12,
-            0x14, 0x47, 0x1e, 0x52, 0x67, 0x81, 0x5d, 0xab, 0xbe, 0x8c, 0xa1, 0x43,
-        ];
-        let sender_d: [u8; 48] = [
-            0x12, 0xdd, 0x65, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
-            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
-            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
-            0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f, 0x4f,
-        ];
-
-        let recipient_secret = SecretKey::<p384::NistP384>::from_slice(&recipient_d).unwrap();
-        let recipient_public = recipient_secret.public_key();
-
-        let sender_secret = SecretKey::<p384::NistP384>::from_slice(&sender_d).unwrap();
-
-        let wrap_key = EcdhEsKeyAgreementWrappingKey::<p384::NistP384, Aes256>::new(
-            sender_secret.clone(),
-            recipient_public,
-            256,
-            b"ECDH-ES+A256KW",
-            None::<&[u8]>,
-            None::<&[u8]>,
-        );
-
-        let cek = [0xab; 32];
-        let wrapped = wrap_key
-            .wrap(&mut TestRng, &cek)
-            .unwrap();
-
-        let unwrap_key = EcdhEsKeyAgreementUnwrappingKey::<p384::NistP384, Aes256>::new(
-            recipient_secret,
-            sender_secret.public_key(),
-            256,
-            b"ECDH-ES+A256KW",
-            None::<&[u8]>,
-            None::<&[u8]>,
-        );
-
-        let unwrapped = unwrap_key.unwrap(&wrapped).unwrap();
-        assert_eq!(unwrapped.as_ref(), &cek);
+        assert_eq!(cek_empty.as_ref(), cek_explicit.as_ref());
     }
 }

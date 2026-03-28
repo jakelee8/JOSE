@@ -19,6 +19,7 @@
 
 mod aes_gcm_kw;
 mod aes_kw;
+#[cfg(feature = "ecdh")]
 mod ecdh;
 mod pbes2;
 mod rsa_oaep;
@@ -34,8 +35,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub use self::aes_gcm_kw::*;
 #[cfg(feature = "aes-kw")]
 pub use self::aes_kw::*;
-// #[cfg(feature = "ecdh")]
-// pub use self::ecdh::*;
+#[cfg(feature = "ecdh")]
+pub use self::ecdh::*;
 #[cfg(feature = "pbes2")]
 pub use self::pbes2::*;
 #[cfg(feature = "rsa")]

@@ -3,12 +3,12 @@
 
 use alloc::boxed::Box;
 
+use jose_jwa::Algorithm;
 use jose_jwa::crypto::{
     EcdsaSigningKey, EcdsaVerifyingKey, Ps256SigningKey, Ps256VerifyingKey, Ps384SigningKey,
     Ps384VerifyingKey, Ps512SigningKey, Ps512VerifyingKey, Rs256SigningKey, Rs256VerifyingKey,
     Rs384SigningKey, Rs384VerifyingKey, Rs512SigningKey, Rs512VerifyingKey,
 };
-use jose_jwa::Algorithm;
 use zeroize::Zeroizing;
 
 use super::KeyInfo;
