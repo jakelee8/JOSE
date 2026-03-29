@@ -11,9 +11,8 @@ use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pss};
 use sha2::{Sha256, Sha384, Sha512};
 
-use crate::Signing;
-use crate::Error;
 use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::{Error, Signing};
 
 /// PS256 (RSA-PSS + SHA-256) signing key
 pub type Ps256SigningKey = RsaPssSigningKey<Sha256>;
@@ -112,7 +111,7 @@ where
 
 impl<D> SigningKey for RsaPssSigningKey<D>
 where
-    D: Digest + FixedOutputReset,
+    D: Digest + FixedOutputReset + RsaPssAlgorithm,
 {
     type Signer<'a>
         = RsaPssSigner<'a, D>
@@ -122,12 +121,7 @@ where
     type VerifyingKey = RsaPssVerifyingKey<D>;
 
     fn alg(&self) -> Signing {
-        match <D as OutputSizeUser>::output_size() {
-            32 => Signing::Ps256,
-            48 => Signing::Ps384,
-            64 => Signing::Ps512,
-            _ => unreachable!("invalid digest size"),
-        }
+        D::ALG
     }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -328,4 +322,21 @@ where
 
         key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
+}
+
+/// Private trait for compile-time RSA-PSS algorithm mapping.
+trait RsaPssAlgorithm {
+    const ALG: Signing;
+}
+
+impl RsaPssAlgorithm for Sha256 {
+    const ALG: Signing = Signing::Ps256;
+}
+
+impl RsaPssAlgorithm for Sha384 {
+    const ALG: Signing = Signing::Ps384;
+}
+
+impl RsaPssAlgorithm for Sha512 {
+    const ALG: Signing = Signing::Ps512;
 }

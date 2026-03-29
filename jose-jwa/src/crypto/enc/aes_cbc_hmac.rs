@@ -72,14 +72,9 @@ where
     /// Get the content encryption algorithm.
     pub fn enc(&self) -> Encryption
     where
-        A: KeySizeUser,
+        (A, D): AesCbcHmacAlgorithm,
     {
-        match (A::key_size(), <D as Digest>::output_size()) {
-            (16, 32) => Encryption::A128CbcHs256,
-            (24, 48) => Encryption::A192CbcHs384,
-            (32, 64) => Encryption::A256CbcHs512,
-            _ => unreachable!("unsupported key size"),
-        }
+        <(A, D)>::ENC
     }
 
     /// Return the key bytes (JWK `k` parameter).
@@ -93,6 +88,7 @@ where
     A: BlockCipherEncrypt + KeyInit + KeySizeUser,
     D: EagerHash + Digest,
     Hmac<D>: Mac + KeyInit,
+    (A, D): AesCbcHmacAlgorithm,
 {
     type Error = Error;
 
@@ -109,13 +105,9 @@ where
         // MAC_KEY = initial MAC_KEY_LEN octets of K
         let mac_key_len = A::key_size();
         // ENC_KEY = final ENC_KEY_LEN octets of K
-        let enc_key_len = mac_key_len;
+        let _enc_key_len = mac_key_len;
 
         let key = self.k.as_ref();
-        if key.len() != mac_key_len + enc_key_len {
-            return Err(Error::InvalidKeyLength);
-        }
-
         let mac_key = &key[..mac_key_len];
         let enc_key = &key[mac_key_len..];
 
@@ -599,4 +591,21 @@ mod tests {
     }
 
     impl TryCryptoRng for FixedRng {}
+}
+
+/// Private trait for compile-time AES-CBC-HMAC algorithm mapping.
+pub(crate) trait AesCbcHmacAlgorithm {
+    const ENC: Encryption;
+}
+
+impl AesCbcHmacAlgorithm for (Aes128, Sha256) {
+    const ENC: Encryption = Encryption::A128CbcHs256;
+}
+
+impl AesCbcHmacAlgorithm for (Aes192, Sha384) {
+    const ENC: Encryption = Encryption::A192CbcHs384;
+}
+
+impl AesCbcHmacAlgorithm for (Aes256, Sha512) {
+    const ENC: Encryption = Encryption::A256CbcHs512;
 }

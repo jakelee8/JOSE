@@ -92,13 +92,9 @@ where
         let cek = cek.as_ref();
         let mut encrypted_cek = vec![0u8; cek.len() + IV_LEN];
 
-        let len = self
-            .kw
+        self.kw
             .wrap_key(cek.as_ref(), &mut encrypted_cek)
-            .map_err(|_| Error::Encryption)?
-            .len();
-
-        encrypted_cek.resize(len, 0);
+            .map_err(|_| Error::Encryption)?;
 
         Ok(WrappedKey {
             encrypted_key: encrypted_cek.into(),

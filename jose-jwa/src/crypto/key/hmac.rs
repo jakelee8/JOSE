@@ -77,7 +77,7 @@ where
 
 impl<D> SigningKey for HmacKey<D>
 where
-    D: EagerHash + TryKeyInit,
+    D: EagerHash + TryKeyInit + HmacAlgorithm,
 {
     type Signer<'a>
         = HmacState<D>
@@ -88,12 +88,7 @@ where
     type VerifyingKey = Self;
 
     fn alg(&self) -> Signing {
-        match D::key_size() {
-            32 => Signing::Hs256,
-            48 => Signing::Hs384,
-            64 => Signing::Hs512,
-            _ => unreachable!("invalid HMAC key size"),
-        }
+        D::ALG
     }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -103,7 +98,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut state = self.signer()?;
-        state.update(data).map_err(|_| Error::Sign)?;
+        state.update(data).expect("infallible");
         Signer::finish(state).map_err(|_| Error::Sign)
     }
 
@@ -137,7 +132,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut state = self.verifier()?;
-        state.update(data).map_err(|_| Error::Sign)?;
+        state.update(data).expect("infallible");
         Verifier::finish(state, signature)
     }
 }
@@ -205,4 +200,21 @@ impl From<InvalidLength> for Error {
     fn from(_: InvalidLength) -> Self {
         Error::InvalidKey
     }
+}
+
+/// Private trait for compile-time HMAC algorithm mapping.
+trait HmacAlgorithm {
+    const ALG: Signing;
+}
+
+impl HmacAlgorithm for Sha256 {
+    const ALG: Signing = Signing::Hs256;
+}
+
+impl HmacAlgorithm for Sha384 {
+    const ALG: Signing = Signing::Hs384;
+}
+
+impl HmacAlgorithm for Sha512 {
+    const ALG: Signing = Signing::Hs512;
 }

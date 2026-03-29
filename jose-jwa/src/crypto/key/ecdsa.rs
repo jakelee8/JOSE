@@ -23,8 +23,8 @@ use elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
 use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 
-use crate::Signing;
 use crate::Error;
+use crate::Signing;
 use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
 
 /// ES256 (ECDSA + P-256 + SHA-256) signing key.

@@ -11,9 +11,8 @@ use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
 use sha2::{Sha256, Sha384, Sha512};
 
-use crate::Signing;
-use crate::Error;
 use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::{Error, Signing};
 
 /// RS256 (RSA-PKCS#1 v1.5 + SHA-256) signing key
 pub type Rs256SigningKey = RsaPkcs1v15SigningKey<Sha256>;
@@ -104,7 +103,7 @@ where
 
 impl<D> SigningKey for RsaPkcs1v15SigningKey<D>
 where
-    D: Digest + digest::const_oid::AssociatedOid,
+    D: Digest + digest::const_oid::AssociatedOid + RsaPkcs1v15Algorithm,
 {
     type Signer<'a>
         = RsaPkcs1v15Signer<'a, D>
@@ -114,12 +113,7 @@ where
     type VerifyingKey = RsaPkcs1v15VerifyingKey<D>;
 
     fn alg(&self) -> Signing {
-        match <D as OutputSizeUser>::output_size() {
-            32 => Signing::Rs256,
-            48 => Signing::Rs384,
-            64 => Signing::Rs512,
-            _ => unreachable!("invalid digest size"),
-        }
+        D::ALG
     }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -312,4 +306,21 @@ where
 
         key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
+}
+
+/// Private trait for compile-time RSA-PKCS#1 v1.5 algorithm mapping.
+trait RsaPkcs1v15Algorithm {
+    const ALG: Signing;
+}
+
+impl RsaPkcs1v15Algorithm for Sha256 {
+    const ALG: Signing = Signing::Rs256;
+}
+
+impl RsaPkcs1v15Algorithm for Sha384 {
+    const ALG: Signing = Signing::Rs384;
+}
+
+impl RsaPkcs1v15Algorithm for Sha512 {
+    const ALG: Signing = Signing::Rs512;
 }

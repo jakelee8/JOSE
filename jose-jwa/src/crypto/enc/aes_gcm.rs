@@ -68,13 +68,11 @@ where
     }
 
     /// Get the content encryption algorithm.
-    pub fn enc(&self) -> Encryption {
-        match A::key_size() {
-            16 => Encryption::A128Gcm,
-            24 => Encryption::A192Gcm,
-            32 => Encryption::A256Gcm,
-            _ => unreachable!("unsupported key size"),
-        }
+    pub fn enc(&self) -> Encryption
+    where
+        A: AesGcmAlgorithm,
+    {
+        A::ENC
     }
 
     /// Return the key bytes (JWK `k` parameter).
@@ -85,7 +83,7 @@ where
 
 impl<A> EncryptingKey for AesGcmKey<A>
 where
-    A: KeySizeUser,
+    A: KeySizeUser + AesGcmAlgorithm,
     AesGcm<A, U12>: KeyInit + AeadInOut,
 {
     type Error = Error;
@@ -150,4 +148,21 @@ where
 
         Ok(Secret::from(plaintext))
     }
+}
+
+/// Private trait for compile-time AES-GCM algorithm mapping.
+pub(crate) trait AesGcmAlgorithm {
+    const ENC: Encryption;
+}
+
+impl AesGcmAlgorithm for aes::Aes128 {
+    const ENC: Encryption = Encryption::A128Gcm;
+}
+
+impl AesGcmAlgorithm for aes::Aes192 {
+    const ENC: Encryption = Encryption::A192Gcm;
+}
+
+impl AesGcmAlgorithm for aes::Aes256 {
+    const ENC: Encryption = Encryption::A256Gcm;
 }
