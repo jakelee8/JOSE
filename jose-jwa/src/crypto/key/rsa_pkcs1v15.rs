@@ -129,10 +129,7 @@ where
     }
 
     fn verifying_key(&self) -> Self::VerifyingKey {
-        RsaPkcs1v15VerifyingKey {
-            key: self.key.to_public_key(),
-            _digest: PhantomData,
-        }
+        RsaPkcs1v15VerifyingKey::new(self.key.to_public_key())
     }
 }
 

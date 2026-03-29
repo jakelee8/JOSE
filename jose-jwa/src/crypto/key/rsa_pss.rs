@@ -49,14 +49,6 @@ where
             _digest: PhantomData,
         }
     }
-
-    /// Get the corresponding verifying key.
-    pub fn verifying_key(&self) -> RsaPssVerifyingKey<D> {
-        RsaPssVerifyingKey {
-            key: self.key.to_public_key(),
-            _digest: PhantomData,
-        }
-    }
 }
 
 impl<D> RsaComponents for RsaPssSigningKey<D> {
@@ -235,7 +227,7 @@ where
 
 impl<D> From<RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
 where
-    D: Digest + FixedOutputReset,
+    D: Digest + FixedOutputReset + RsaPssAlgorithm,
 {
     fn from(key: RsaPssSigningKey<D>) -> Self {
         key.verifying_key()
@@ -244,7 +236,7 @@ where
 
 impl<D> From<&RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
 where
-    D: Digest + FixedOutputReset,
+    D: Digest + FixedOutputReset + RsaPssAlgorithm,
 {
     fn from(key: &RsaPssSigningKey<D>) -> Self {
         key.verifying_key()

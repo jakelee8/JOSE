@@ -207,7 +207,7 @@ where
 {
     /// Get the curve identifier (for JWK serialization).
     pub fn crv(&self) -> EcCurves {
-        curve_to_ec_curves::<C>()
+        C::CURVE
     }
 }
 
@@ -336,7 +336,7 @@ where
 {
     /// Get the curve identifier (for JWK serialization).
     pub fn crv(&self) -> EcCurves {
-        curve_to_ec_curves::<C>()
+        C::CURVE
     }
 
     /// Get the private scalar bytes (JWK `d` parameter).
@@ -385,17 +385,6 @@ where
     fn from(key: EcdhSecretKey<C>) -> Self {
         key.inner
     }
-}
-
-/// Map a curve type to the EcCurves enum.
-///
-/// This function provides compile-time dispatch from the Rust curve type
-/// to the JOSE curve identifier via the [`EcdhCurve`] trait.
-fn curve_to_ec_curves<C>() -> EcCurves
-where
-    C: EcdhCurve,
-{
-    C::CURVE
 }
 
 /// Concatenation KDF per RFC 7518 Section 4.6.2 / NIST.800-56A Section 5.8.1.
