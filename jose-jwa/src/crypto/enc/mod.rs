@@ -11,7 +11,7 @@ mod aes_gcm;
 
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "aes-cbc-hmac")]
 pub use self::aes_cbc_hmac::*;
@@ -82,7 +82,7 @@ pub trait DecryptingKey {
 ///
 /// Contains the encrypted data along with the parameters needed for decryption
 /// and integrity verification.
-#[derive(Zeroize)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Encrypted {
     /// The encrypted ciphertext.
     pub ciphertext: Bytes,

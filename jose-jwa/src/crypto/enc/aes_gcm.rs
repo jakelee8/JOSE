@@ -152,6 +152,7 @@ where
 
 /// Private trait for compile-time AES-GCM algorithm mapping.
 pub trait AesGcmAlgorithm {
+    /// The content encryption algorithm identifier.
     const ENC: Encryption;
 }
 

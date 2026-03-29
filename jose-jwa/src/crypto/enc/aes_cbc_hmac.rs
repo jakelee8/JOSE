@@ -595,6 +595,7 @@ mod tests {
 
 /// Private trait for compile-time AES-CBC-HMAC algorithm mapping.
 pub trait AesCbcHmacAlgorithm {
+    /// The content encryption algorithm identifier.
     const ENC: Encryption;
 }
 

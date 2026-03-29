@@ -127,7 +127,7 @@ pub enum KeyManagement {
 
 impl KeyManagement {
     /// Returns the string representation of this sealing algorithm.
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             #[cfg(feature = "legacy-rsa1_5")]
             #[allow(deprecated)]
@@ -180,7 +180,7 @@ pub struct WrappedKey {
 /// key wrapping does not use IV or AAD.
 pub trait WrappingKey {
     /// The error type returned when wrapping fails.
-    type Error;
+    type Error: core::error::Error;
 
     /// Wrap a content encryption key.
     ///
@@ -205,7 +205,7 @@ pub trait WrappingKey {
 /// key unwrapping does not use IV or AAD.
 pub trait UnwrappingKey {
     /// The error type returned when unwrapping fails.
-    type Error;
+    type Error: core::error::Error;
 
     /// Unwrap a content encryption key.
     ///
