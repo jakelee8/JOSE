@@ -185,11 +185,13 @@ pub trait WrappingKey {
     /// Wrap a content encryption key.
     ///
     /// # Arguments
+    /// * `rng` - A cryptographically secure random number generator
     /// * `cek` - The content encryption key to wrap
     ///
     /// # Returns
-    /// The wrapped key as a byte vector.
-    fn wrap(
+    /// The wrapped key containing the encrypted CEK and any additional parameters
+    /// (such as IV, tag, or salt) depending on the algorithm.
+    fn wrap_key(
         &self,
         rng: &mut impl TryCryptoRng,
         cek: impl AsRef<[u8]>,
@@ -208,10 +210,10 @@ pub trait UnwrappingKey {
     /// Unwrap a content encryption key.
     ///
     /// # Arguments
-    /// * `wrapped_key` - The wrapped key
+    /// * `wrapped_key` - The wrapped key containing the encrypted CEK
     ///
     /// # Returns
     /// The unwrapped key as a `Secret`. The caller is responsible for
     /// verifying the length of the unwrapped key.
-    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error>;
+    fn unwrap_key(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error>;
 }

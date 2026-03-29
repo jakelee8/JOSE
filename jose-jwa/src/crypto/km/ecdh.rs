@@ -804,14 +804,14 @@ mod tests {
         let mut rng = getrandom::SysRng;
         let wrapped = AesKwKey128::try_from(kek_sender)
             .unwrap()
-            .wrap(&mut rng, original_cek)
+            .wrap_key(&mut rng, original_cek)
             .unwrap();
 
         // Recipient: derive the same KEK and unwrap
         let kek_recipient = bob_secret.derive(&alice_secret.public_key(), &params);
         let unwrapped = AesKwKey128::try_from(kek_recipient)
             .unwrap()
-            .unwrap(&wrapped)
+            .unwrap_key(&wrapped)
             .unwrap();
 
         assert_eq!(unwrapped.as_ref(), original_cek);

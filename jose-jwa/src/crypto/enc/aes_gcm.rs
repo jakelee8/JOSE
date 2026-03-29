@@ -61,7 +61,11 @@ where
     pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut k = vec![0u8; A::key_size()];
         rng.try_fill_bytes(&mut k).map_err(|_| Error::Rng)?;
-        Self::from_bytes(k)
+
+        Ok(Self {
+            k: k.into(),
+            _alg: PhantomData,
+        })
     }
 
     /// Get the encryption algorithm.

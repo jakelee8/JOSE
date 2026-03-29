@@ -111,10 +111,10 @@ impl Pbes2Config for ConfigHs512A256 {
 /// let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
 ///
 /// // Wrap a CEK (requires a RNG)
-/// // let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+/// // let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
 ///
 /// // Unwrap (iteration count is stored in the key)
-/// // let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
+/// // let unwrapped = pbes2_key.unwrap_key(&wrapped).unwrap();
 /// ```
 pub struct Pbes2Key<C> {
     password: Secret,
@@ -154,7 +154,7 @@ where
 {
     type Error = Error;
 
-    fn wrap(
+    fn wrap_key(
         &self,
         rng: &mut impl TryCryptoRng,
         cek: impl AsRef<[u8]>,
@@ -177,7 +177,7 @@ where
         );
 
         // Wrap the CEK using AES-KW
-        let mut wrapped = AesKwKey::<C::Cipher>::from(kek).wrap(rng, cek)?;
+        let mut wrapped = AesKwKey::<C::Cipher>::from(kek).wrap_key(rng, cek)?;
 
         // Add the salt to the wrapped key
         wrapped.salt = Some(salt_input.to_vec().into());
@@ -193,7 +193,7 @@ where
 {
     type Error = Error;
 
-    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+    fn unwrap_key(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         // Extract salt from wrapped key
         let salt_input = wrapped_key
             .salt
@@ -218,7 +218,7 @@ where
         );
 
         // Unwrap the CEK using AES-KW
-        AesKwKey::<C::Cipher>::from(kek).unwrap(wrapped_key)
+        AesKwKey::<C::Cipher>::from(kek).unwrap_key(wrapped_key)
     }
 }
 
@@ -262,8 +262,8 @@ mod tests {
         let iteration_count = 1000;
 
         let pbes2_key = Pbes2Hs256A128Key::new(password, iteration_count);
-        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
-        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
+        let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap_key(&wrapped).unwrap();
 
         assert_eq!(unwrapped.as_ref(), cek);
     }
@@ -276,8 +276,8 @@ mod tests {
         let iteration_count = 1000;
 
         let pbes2_key = Pbes2Hs384A192Key::new(password, iteration_count);
-        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
-        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
+        let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap_key(&wrapped).unwrap();
 
         assert_eq!(unwrapped.as_ref(), cek);
     }
@@ -290,8 +290,8 @@ mod tests {
         let iteration_count = 1000;
 
         let pbes2_key = Pbes2Hs512A256Key::new(password, iteration_count);
-        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
-        let unwrapped = pbes2_key.unwrap(&wrapped).unwrap();
+        let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
+        let unwrapped = pbes2_key.unwrap_key(&wrapped).unwrap();
 
         assert_eq!(unwrapped.as_ref(), cek);
     }
@@ -304,10 +304,10 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
 
         let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
-        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
 
         let wrong_key = Pbes2Hs256A128Key::new(wrong_password, 1000);
-        assert!(wrong_key.unwrap(&wrapped).is_err());
+        assert!(wrong_key.unwrap_key(&wrapped).is_err());
     }
 
     #[test]
@@ -317,12 +317,12 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
 
         let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
-        let mut wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let mut wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
 
         // Modify the salt
         wrapped.salt = Some(b"wrong-salt-input!!".to_vec().into());
 
-        assert!(pbes2_key.unwrap(&wrapped).is_err());
+        assert!(pbes2_key.unwrap_key(&wrapped).is_err());
     }
 
     #[test]
@@ -332,11 +332,11 @@ mod tests {
         let cek = b"my-content-encryption-key!!12345";
 
         let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
-        let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
+        let wrapped = pbes2_key.wrap_key(&mut rng, cek).unwrap();
 
         // Use wrong iteration count
         let wrong_key = Pbes2Hs256A128Key::new(password, 999);
-        assert!(wrong_key.unwrap(&wrapped).is_err());
+        assert!(wrong_key.unwrap_key(&wrapped).is_err());
     }
 
     #[test]
@@ -351,6 +351,6 @@ mod tests {
             salt: None, // Missing salt
         };
 
-        assert!(pbes2_key.unwrap(&wrapped).is_err());
+        assert!(pbes2_key.unwrap_key(&wrapped).is_err());
     }
 }

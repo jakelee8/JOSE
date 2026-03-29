@@ -161,7 +161,7 @@ where
 {
     type Error = Error;
 
-    fn wrap(
+    fn wrap_key(
         &self,
         rng: &mut impl TryCryptoRng,
         cek: impl AsRef<[u8]>,
@@ -186,7 +186,7 @@ where
 {
     type Error = Error;
 
-    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+    fn unwrap_key(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         self.key
             .decrypt(Oaep::<D>::new(), wrapped_key.encrypted_key.as_ref())
             .map_err(|_| Error::Decryption)
@@ -239,7 +239,7 @@ where
 {
     type Error = Error;
 
-    fn wrap(
+    fn wrap_key(
         &self,
         rng: &mut impl TryCryptoRng,
         cek: impl AsRef<[u8]>,

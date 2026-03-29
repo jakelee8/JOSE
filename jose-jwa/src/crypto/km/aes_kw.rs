@@ -84,7 +84,7 @@ where
 {
     type Error = Error;
 
-    fn wrap(
+    fn wrap_key(
         &self,
         _rng: &mut impl TryCryptoRng,
         cek: impl AsRef<[u8]>,
@@ -115,7 +115,7 @@ where
 {
     type Error = Error;
 
-    fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
+    fn unwrap_key(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         let encrypted_cek = wrapped_key.encrypted_key.as_ref();
         let mut buf = vec![0u8; encrypted_cek.len().saturating_sub(IV_LEN)];
 

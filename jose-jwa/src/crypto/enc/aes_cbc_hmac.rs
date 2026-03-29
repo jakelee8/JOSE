@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::{
-    BlockCipherDecrypt, BlockCipherEncrypt, BlockModeEncrypt, KeyIvInit, KeySizeUser,
+    BlockCipherDecrypt, BlockCipherEncrypt, BlockModeEncrypt, Iv, KeyIvInit, KeySizeUser,
 };
 use hmac::{EagerHash, Hmac, KeyInit, Mac};
 use jose_b64::serde::Secret;
@@ -115,7 +115,7 @@ where
         let mac_key = &key[..mac_key_len];
         let enc_key = &key[mac_key_len..];
 
-        let mut iv = [0u8; 16];
+        let mut iv = Iv::<cbc::Encryptor<A>>::default();
         rng.try_fill_bytes(&mut iv).map_err(|_| Error::Rng)?;
 
         // E = CBC-PKCS7-ENC(ENC_KEY, P),
