@@ -11,7 +11,9 @@ use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
 use sha2::{Sha256, Sha384, Sha512};
 
-use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::{
+    RsaComponents, RsaPrivateComponents, Signer, SigningKey, Verifier, VerifyingKey,
+};
 use crate::{Error, Signing};
 
 /// RS256 (RSA-PKCS#1 v1.5 + SHA-256) signing key
@@ -47,54 +49,50 @@ where
             _digest: PhantomData,
         }
     }
+}
 
-    /// Return the modulus (JWK `n` parameter).
-    pub fn n(&self) -> Bytes {
+impl<D> RsaComponents for RsaPkcs1v15SigningKey<D> {
+    fn n(&self) -> Bytes {
         self.key.n().to_be_bytes_trimmed_vartime().into()
     }
 
-    /// Return the public exponent (JWK `e` parameter).
-    pub fn e(&self) -> Bytes {
+    fn e(&self) -> Bytes {
         self.key.e().to_be_bytes_trimmed_vartime().into()
     }
+}
 
-    /// Return the private exponent (JWK `d` parameter).
-    pub fn d(&self) -> Secret {
+impl<D> RsaPrivateComponents for RsaPkcs1v15SigningKey<D> {
+    fn d(&self) -> Secret {
         Secret::from(self.key.d().to_be_bytes().to_vec())
     }
 
-    /// Return the first prime factor (JWK `p` parameter).
-    pub fn p(&self) -> Option<Secret> {
+    fn p(&self) -> Option<Secret> {
         self.key
             .primes()
             .first()
             .map(|p| Secret::from(p.to_be_bytes().to_vec()))
     }
 
-    /// Return the second prime factor (JWK `q` parameter).
-    pub fn q(&self) -> Option<Secret> {
+    fn q(&self) -> Option<Secret> {
         self.key
             .primes()
             .get(1)
             .map(|q| Secret::from(q.to_be_bytes().to_vec()))
     }
 
-    /// Return the first factor CRT exponent (JWK `dp` parameter).
-    pub fn dp(&self) -> Option<Secret> {
+    fn dp(&self) -> Option<Secret> {
         self.key
             .dp()
             .map(|dp| Secret::from(dp.to_be_bytes().to_vec()))
     }
 
-    /// Return the second factor CRT exponent (JWK `dq` parameter).
-    pub fn dq(&self) -> Option<Secret> {
+    fn dq(&self) -> Option<Secret> {
         self.key
             .dq()
             .map(|dq| Secret::from(dq.to_be_bytes().to_vec()))
     }
 
-    /// Return the first CRT coefficient (JWK `qi` parameter).
-    pub fn qi(&self) -> Option<Secret> {
+    fn qi(&self) -> Option<Secret> {
         self.key
             .qinv()
             .map(|qi| Secret::from(qi.retrieve().to_be_bytes().to_vec()))
@@ -186,14 +184,14 @@ where
             _digest: PhantomData,
         }
     }
+}
 
-    /// Return the modulus (JWK `n` parameter).
-    pub fn n(&self) -> Bytes {
+impl<D> RsaComponents for RsaPkcs1v15VerifyingKey<D> {
+    fn n(&self) -> Bytes {
         self.key.n().to_be_bytes_trimmed_vartime().into()
     }
 
-    /// Return the public exponent (JWK `e` parameter).
-    pub fn e(&self) -> Bytes {
+    fn e(&self) -> Bytes {
         self.key.e().to_be_bytes_trimmed_vartime().into()
     }
 }

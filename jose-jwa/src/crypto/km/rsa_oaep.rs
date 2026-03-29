@@ -102,7 +102,8 @@ impl<D> RsaOaepPrivateKey<D> {
 
     /// Get the private exponent `d` as a secret.
     pub fn d(&self) -> Secret {
-        self.key.d().to_be_bytes_trimmed_vartime().into()
+        // Use constant-time encoding for private key material
+        self.key.d().to_be_bytes().into()
     }
 
     /// Get the first prime factor `p` if available.

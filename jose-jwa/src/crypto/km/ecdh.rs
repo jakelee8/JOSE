@@ -65,6 +65,15 @@ use sha2::{Digest, Sha256};
 
 use crate::Error;
 
+/// Compile-time curve identifier trait.
+///
+/// Implemented by each supported curve to provide its JWK curve identifier
+/// at compile time, eliminating the need for runtime field-size matching.
+pub trait EcdhCurve {
+    /// The JWK curve identifier for this curve.
+    const CURVE: EcCurves;
+}
+
 /// Curve identifiers for ECDH operations.
 ///
 /// This enum mirrors `jose_jwk::key::EcCurves` for use in the crypto layer.
@@ -76,6 +85,22 @@ pub enum EcCurves {
     P384,
     /// P-521 curve
     P521,
+}
+
+// Compile-time curve implementations
+#[cfg(feature = "p256")]
+impl EcdhCurve for p256::NistP256 {
+    const CURVE: EcCurves = EcCurves::P256;
+}
+
+#[cfg(feature = "p384")]
+impl EcdhCurve for p384::NistP384 {
+    const CURVE: EcCurves = EcCurves::P384;
+}
+
+#[cfg(feature = "p521")]
+impl EcdhCurve for p521::NistP521 {
+    const CURVE: EcCurves = EcCurves::P521;
 }
 
 /// Algorithm context for ECDH key derivation via concat KDF (RFC 7518 §4.6.2).
@@ -178,7 +203,7 @@ pub struct EcdhPublicKey<C: CurveArithmetic> {
 
 impl<C> EcdhPublicKey<C>
 where
-    C: CurveArithmetic,
+    C: CurveArithmetic + EcdhCurve,
 {
     /// Get the curve identifier (for JWK serialization).
     pub fn crv(&self) -> EcCurves {
@@ -303,7 +328,12 @@ where
         let inner = SecretKey::try_generate_from_rng(rng).map_err(|_| Error::Rng)?;
         Ok(Self { inner })
     }
+}
 
+impl<C> EcdhSecretKey<C>
+where
+    C: CurveArithmetic + EcdhCurve,
+{
     /// Get the curve identifier (for JWK serialization).
     pub fn crv(&self) -> EcCurves {
         curve_to_ec_curves::<C>()
@@ -360,21 +390,12 @@ where
 /// Map a curve type to the EcCurves enum.
 ///
 /// This function provides compile-time dispatch from the Rust curve type
-/// to the JOSE curve identifier.
+/// to the JOSE curve identifier via the [`EcdhCurve`] trait.
 fn curve_to_ec_curves<C>() -> EcCurves
 where
-    C: CurveArithmetic,
+    C: EcdhCurve,
 {
-    // We use the size of the field to identify curves
-    // This works because each NIST curve has a unique field size
-    let field_size = <C as Curve>::FieldBytesSize::USIZE;
-
-    match field_size {
-        32 => EcCurves::P256,
-        48 => EcCurves::P384,
-        66 => EcCurves::P521,
-        _ => unreachable!("unsupported curve with field size {}", field_size),
-    }
+    C::CURVE
 }
 
 /// Concatenation KDF per RFC 7518 Section 4.6.2 / NIST.800-56A Section 5.8.1.

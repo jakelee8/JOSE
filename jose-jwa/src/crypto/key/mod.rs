@@ -17,6 +17,46 @@ mod verify;
 pub use self::sign::*;
 pub use self::verify::*;
 
+#[cfg(feature = "rsa")]
+use jose_b64::serde::{Bytes, Secret};
+
+#[cfg(feature = "rsa")]
+/// Trait for accessing RSA JWK components (n, e, d, p, q, dp, dq, qi).
+///
+/// Implemented by RSA signing and verifying keys to provide consistent
+/// JWK parameter access across PKCS#1 v1.5 and PSS variants.
+pub trait RsaComponents {
+    /// Return the modulus (JWK `n` parameter).
+    fn n(&self) -> Bytes;
+
+    /// Return the public exponent (JWK `e` parameter).
+    fn e(&self) -> Bytes;
+}
+
+#[cfg(feature = "rsa")]
+/// Trait for accessing RSA private JWK components.
+///
+/// Implemented by RSA signing keys to provide access to private key parameters.
+pub trait RsaPrivateComponents: RsaComponents {
+    /// Return the private exponent (JWK `d` parameter).
+    fn d(&self) -> Secret;
+
+    /// Return the first prime factor (JWK `p` parameter).
+    fn p(&self) -> Option<Secret>;
+
+    /// Return the second prime factor (JWK `q` parameter).
+    fn q(&self) -> Option<Secret>;
+
+    /// Return the first factor CRT exponent (JWK `dp` parameter).
+    fn dp(&self) -> Option<Secret>;
+
+    /// Return the second factor CRT exponent (JWK `dq` parameter).
+    fn dq(&self) -> Option<Secret>;
+
+    /// Return the first CRT coefficient (JWK `qi` parameter).
+    fn qi(&self) -> Option<Secret>;
+}
+
 #[cfg(feature = "k256")]
 pub use self::ecdsa::{Es256KSigningKey, Es256KVerifyingKey};
 #[cfg(feature = "p256")]

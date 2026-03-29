@@ -151,7 +151,7 @@ where
 }
 
 /// Private trait for compile-time AES-GCM algorithm mapping.
-pub(crate) trait AesGcmAlgorithm {
+pub trait AesGcmAlgorithm {
     const ENC: Encryption;
 }
 
