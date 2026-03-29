@@ -12,7 +12,8 @@ use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::Signing;
-use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::Error;
+use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
 
 /// RS256 (RSA-PKCS#1 v1.5 + SHA-256) signing key
 pub type Rs256SigningKey = RsaPkcs1v15SigningKey<Sha256>;
@@ -45,16 +46,6 @@ where
         Self {
             key,
             _digest: PhantomData,
-        }
-    }
-
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        match D::output_size() {
-            32 => Signing::Rs256,
-            48 => Signing::Rs384,
-            64 => Signing::Rs512,
-            _ => unreachable!("invalid digest size"),
         }
     }
 
@@ -121,6 +112,15 @@ where
         Self: 'a;
     type SignError = Error;
     type VerifyingKey = RsaPkcs1v15VerifyingKey<D>;
+
+    fn alg(&self) -> Signing {
+        match <D as OutputSizeUser>::output_size() {
+            32 => Signing::Rs256,
+            48 => Signing::Rs384,
+            64 => Signing::Rs512,
+            _ => unreachable!("invalid digest size"),
+        }
+    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(RsaPkcs1v15Signer {
@@ -190,16 +190,6 @@ where
         Self {
             key,
             _digest: PhantomData,
-        }
-    }
-
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        match D::output_size() {
-            32 => Signing::Rs256,
-            48 => Signing::Rs384,
-            64 => Signing::Rs512,
-            _ => unreachable!("invalid digest size"),
         }
     }
 

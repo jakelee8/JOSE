@@ -24,7 +24,8 @@ use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 
 use crate::Signing;
-use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::Error;
+use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
 
 /// ES256 (ECDSA + P-256 + SHA-256) signing key.
 #[cfg(feature = "p256")]
@@ -56,7 +57,7 @@ pub type Es256KVerifyingKey = EcdsaVerifyingKey<k256::Secp256k1>;
 
 /// Trait for deriving the signing algorithm from the curve type at compile time.
 pub trait EcdsaCurveAlg {
-    /// Returns the [`Signing`] algorithm corresponding to this curve.
+    /// Returns the signing algorithm corresponding to this curve.
     fn alg() -> Signing;
 }
 
@@ -108,11 +109,6 @@ where
         Ok(Self { key })
     }
 
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        C::alg()
-    }
-
     /// Return the private scalar (JWK `d` parameter).
     pub fn d(&self) -> Secret {
         self.key.to_bytes().to_vec().into()
@@ -128,9 +124,11 @@ where
 
 impl<C> SigningKey for EcdsaSigningKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
     SignatureSize<C>: ArraySize,
+    AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
+    FieldBytesSize<C>: ModulusSize,
 {
     type Signer<'a>
         = EcdsaSigner<'a, C>
@@ -138,6 +136,10 @@ where
         Self: 'a;
     type SignError = Error;
     type VerifyingKey = EcdsaVerifyingKey<C>;
+
+    fn alg(&self) -> Signing {
+        C::alg()
+    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(EcdsaSigner {
@@ -267,11 +269,6 @@ where
         let key = ecdsa::VerifyingKey::<C>::from_sec1_bytes(bytes.as_ref())
             .map_err(|_| Error::InvalidKey)?;
         Ok(Self { key })
-    }
-
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        C::alg()
     }
 
     /// Return the x-coordinate (JWK `x` parameter).

@@ -63,7 +63,7 @@ use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use sha2::{Digest, Sha256};
 
-use crate::crypto::Error;
+use crate::Error;
 
 /// Curve identifiers for ECDH operations.
 ///

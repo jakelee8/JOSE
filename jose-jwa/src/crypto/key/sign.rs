@@ -8,6 +8,8 @@ use core::error::Error;
 use jose_b64::serde::Bytes;
 use jose_b64::stream::Update;
 
+use crate::Signing;
+
 use super::VerifyingKey;
 
 /// A signature creation key.
@@ -28,8 +30,11 @@ pub trait SigningKey: VerifyingKey {
     where
         Self: 'a;
 
-    /// The signer state type.
+    /// The verifying key type.
     type VerifyingKey: VerifyingKey;
+
+    /// Returns the signing algorithm identifier.
+    fn alg(&self) -> Signing;
 
     /// Begin the signature creation process.
     ///
@@ -44,7 +49,6 @@ pub trait SigningKey: VerifyingKey {
     ///
     /// # Arguments
     /// * `data` - The data to sign
-    /// * `rng` - A cryptographically secure random number generator
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError>;
 
     /// Get the corresponding verifying key.

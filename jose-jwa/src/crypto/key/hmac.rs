@@ -14,7 +14,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::{Signer, SigningKey, Verifier, VerifyingKey};
-use crate::{Signing, crypto::Error};
+use crate::{Error, Signing};
 
 /// HS256 (HMAC + SHA-256) signer
 pub type Hs256Signer = HmacKey<Hmac<Sha256>>;
@@ -69,16 +69,6 @@ where
         })
     }
 
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        match D::key_size() {
-            32 => Signing::Hs256,
-            48 => Signing::Hs384,
-            64 => Signing::Hs512,
-            _ => unreachable!("invalid HMAC key size"),
-        }
-    }
-
     /// Return the key bytes (JWK `k` parameter).
     pub fn k(&self) -> &Secret {
         &self.k
@@ -96,6 +86,15 @@ where
 
     type SignError = Error;
     type VerifyingKey = Self;
+
+    fn alg(&self) -> Signing {
+        match D::key_size() {
+            32 => Signing::Hs256,
+            48 => Signing::Hs384,
+            64 => Signing::Hs512,
+            _ => unreachable!("invalid HMAC key size"),
+        }
+    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         let hmac = D::new_from_slice(&self.k)?;

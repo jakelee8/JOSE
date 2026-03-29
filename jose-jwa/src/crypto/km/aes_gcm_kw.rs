@@ -21,7 +21,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::crypto::Error;
+use crate::Error;
 
 /// Type alias for AES-192-GCM with 96-bit nonce (for AES-GCM-KW).
 pub type Aes192Gcm = AesGcm<Aes192, U12>;

@@ -16,7 +16,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::crypto::Error;
+use crate::Error;
 
 /// AES-128 Key Wrap key type alias.
 pub type AesKwKey128 = AesKwKey<Aes128>;

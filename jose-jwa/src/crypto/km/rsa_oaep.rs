@@ -16,7 +16,8 @@ use rsa::{BoxedUint, Oaep, RsaPrivateKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 
-use crate::crypto::{Error, UnwrappingKey, WrappedKey, WrappingKey};
+use crate::Error;
+use crate::crypto::{UnwrappingKey, WrappedKey, WrappingKey};
 
 /// RSA-OAEP with SHA-1 public key type alias.
 pub type RsaOaepSha1PublicKey = RsaOaepPublicKey<Sha1>;

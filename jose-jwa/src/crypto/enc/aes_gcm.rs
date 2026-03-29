@@ -6,9 +6,8 @@
 
 #![cfg(feature = "aes-gcm")]
 
-use core::marker::PhantomData;
-
 use alloc::vec;
+use core::marker::PhantomData;
 
 use aes::cipher::{InOutBuf, KeyInit};
 use aes_gcm::{AeadInOut, AesGcm, KeySizeUser, Nonce};
@@ -16,8 +15,8 @@ use digest::consts::U12;
 use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
-use super::{DecryptingKey, Encrypted, EncryptingKey, Error};
-use crate::Encryption;
+use super::{DecryptingKey, Encrypted, EncryptingKey};
+use crate::{Encryption, Error};
 
 /// AES-128-GCM content encryption key (128-bit key).
 ///
@@ -68,8 +67,8 @@ where
         })
     }
 
-    /// Get the encryption algorithm.
-    pub fn alg(&self) -> Encryption {
+    /// Get the content encryption algorithm.
+    pub fn enc(&self) -> Encryption {
         match A::key_size() {
             16 => Encryption::A128Gcm,
             24 => Encryption::A192Gcm,
@@ -90,6 +89,10 @@ where
     AesGcm<A, U12>: KeyInit + AeadInOut,
 {
     type Error = Error;
+
+    fn enc(&self) -> Encryption {
+        self.enc()
+    }
 
     fn encrypt(
         &self,

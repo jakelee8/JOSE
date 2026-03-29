@@ -12,7 +12,8 @@ use rsa::{RsaPrivateKey, RsaPublicKey, pss};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::Signing;
-use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::Error;
+use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
 
 /// PS256 (RSA-PSS + SHA-256) signing key
 pub type Ps256SigningKey = RsaPssSigningKey<Sha256>;
@@ -45,16 +46,6 @@ where
         Self {
             key,
             _digest: PhantomData,
-        }
-    }
-
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        match Self::digest_size() {
-            32 => Signing::Ps256,
-            48 => Signing::Ps384,
-            64 => Signing::Ps512,
-            _ => unreachable!("invalid digest size"),
         }
     }
 
@@ -117,13 +108,6 @@ where
             .qinv()
             .map(|qi| Secret::from(qi.retrieve().to_be_bytes().to_vec()))
     }
-
-    fn digest_size() -> usize
-    where
-        D: OutputSizeUser,
-    {
-        <D as OutputSizeUser>::output_size()
-    }
 }
 
 impl<D> SigningKey for RsaPssSigningKey<D>
@@ -136,6 +120,15 @@ where
         Self: 'a;
     type SignError = Error;
     type VerifyingKey = RsaPssVerifyingKey<D>;
+
+    fn alg(&self) -> Signing {
+        match <D as OutputSizeUser>::output_size() {
+            32 => Signing::Ps256,
+            48 => Signing::Ps384,
+            64 => Signing::Ps512,
+            _ => unreachable!("invalid digest size"),
+        }
+    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(RsaPssSigner {
@@ -205,16 +198,6 @@ where
         Self {
             key,
             _digest: PhantomData,
-        }
-    }
-
-    /// Get the signing algorithm.
-    pub fn alg(&self) -> Signing {
-        match <D as OutputSizeUser>::output_size() {
-            32 => Signing::Ps256,
-            48 => Signing::Ps384,
-            64 => Signing::Ps512,
-            _ => unreachable!("invalid digest size"),
         }
     }
 

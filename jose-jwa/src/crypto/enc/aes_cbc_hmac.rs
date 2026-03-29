@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::Encrypted;
-use crate::Encryption;
-use crate::crypto::{DecryptingKey, EncryptingKey, Error};
+use crate::crypto::{DecryptingKey, EncryptingKey};
+use crate::{Encryption, Error};
 
 /// Type alias for A128CBC-HS256 keys (AES-128 with SHA-256).
 pub type Aes128CbcHmacSha256Key = AesCbcHmacKey<Aes128, Sha256>;
@@ -69,8 +69,8 @@ where
         Self::from_bytes(k)
     }
 
-    /// Get the encryption algorithm.
-    pub fn alg(&self) -> Encryption
+    /// Get the content encryption algorithm.
+    pub fn enc(&self) -> Encryption
     where
         A: KeySizeUser,
     {
@@ -90,11 +90,15 @@ where
 
 impl<A, D> EncryptingKey for AesCbcHmacKey<A, D>
 where
-    A: BlockCipherEncrypt + KeyInit,
-    D: EagerHash,
+    A: BlockCipherEncrypt + KeyInit + KeySizeUser,
+    D: EagerHash + Digest,
     Hmac<D>: Mac + KeyInit,
 {
     type Error = Error;
+
+    fn enc(&self) -> Encryption {
+        self.enc()
+    }
 
     fn encrypt(
         &self,

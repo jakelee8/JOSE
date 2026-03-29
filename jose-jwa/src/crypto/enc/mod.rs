@@ -18,7 +18,7 @@ pub use self::aes_cbc_hmac::*;
 #[cfg(feature = "aes-gcm")]
 pub use self::aes_gcm::*;
 
-pub use crate::Error;
+use crate::Encryption;
 
 /// Trait for keys that can encrypt content.
 ///
@@ -28,6 +28,9 @@ pub use crate::Error;
 pub trait EncryptingKey {
     /// The error type returned by encryption operations.
     type Error: core::error::Error;
+
+    /// Returns the content encryption algorithm identifier.
+    fn enc(&self) -> Encryption;
 
     /// Encrypt plaintext.
     ///
