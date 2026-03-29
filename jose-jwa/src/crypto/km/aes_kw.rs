@@ -16,7 +16,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::crypto::CipherError;
+use crate::crypto::Error;
 
 /// AES-128 Key Wrap key type alias.
 pub type AesKwKey128 = AesKwKey<Aes128>;
@@ -42,9 +42,9 @@ where
     C: KeyInit + KeySizeUser,
 {
     /// Generate a random key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut key = Key::<C>::default();
-        rng.try_fill_bytes(&mut key).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut key).map_err(|_| Error::Rng)?;
         Ok(key.into())
     }
 
@@ -70,11 +70,10 @@ impl<C> TryFrom<Secret> for AesKwKey<C>
 where
     C: KeyInit + KeySizeUser,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn try_from(k: Secret) -> Result<Self, Self::Error> {
-        let kw =
-            AesKw::<C>::new_from_slice(k.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
+        let kw = AesKw::<C>::new_from_slice(k.as_ref()).map_err(|_| Error::InvalidKeyLength)?;
         Ok(Self { k, kw })
     }
 }
@@ -83,7 +82,7 @@ impl<C> WrappingKey for AesKwKey<C>
 where
     C: BlockCipherEncrypt<BlockSize = U16> + BlockSizeUser + KeySizeUser,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn wrap(
         &self,
@@ -96,7 +95,7 @@ where
         let len = self
             .kw
             .wrap_key(cek.as_ref(), &mut encrypted_cek)
-            .map_err(|_| CipherError::Aead)?
+            .map_err(|_| Error::Encryption)?
             .len();
 
         encrypted_cek.resize(len, 0);
@@ -114,7 +113,7 @@ impl<C> UnwrappingKey for AesKwKey<C>
 where
     C: BlockCipherDecrypt<BlockSize = U16> + BlockSizeUser + KeySizeUser,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         let encrypted_cek = wrapped_key.encrypted_key.as_ref();
@@ -122,7 +121,7 @@ where
 
         self.kw
             .unwrap_key(encrypted_cek, &mut buf)
-            .map_err(|_| CipherError::Aead)?;
+            .map_err(|_| Error::Decryption)?;
 
         Ok(buf.into())
     }

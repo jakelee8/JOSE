@@ -12,7 +12,7 @@ use rsa::{RsaPrivateKey, RsaPublicKey, pss};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// PS256 (RSA-PSS + SHA-256) signing key
 pub type Ps256SigningKey = RsaPssSigningKey<Sha256>;
@@ -134,7 +134,7 @@ where
         = RsaPssSigner<'a, D>
     where
         Self: 'a;
-    type SignError = CipherError;
+    type SignError = Error;
     type VerifyingKey = RsaPssVerifyingKey<D>;
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -147,7 +147,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| CipherError::Sign)?;
+        signer.update(data).map_err(|_| Error::Sign)?;
         signer.finish()
     }
 
@@ -167,7 +167,7 @@ where
         = RsaPssVerifier<D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(RsaPssVerifier {
@@ -183,7 +183,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -237,7 +237,7 @@ where
         = RsaPssVerifier<D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(RsaPssVerifier {
@@ -253,7 +253,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -299,13 +299,13 @@ impl<'a, D> Signer for RsaPssSigner<'a, D>
 where
     D: Digest + FixedOutputReset,
 {
-    type SignError = CipherError;
+    type SignError = Error;
 
     fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize().to_vec();
 
         let key = pss::SigningKey::<D>::from(self.key.clone());
-        let sig = key.sign_prehash(&hash).map_err(|_| CipherError::Sign)?;
+        let sig = key.sign_prehash(&hash).map_err(|_| Error::Sign)?;
 
         Ok(sig.to_bytes().as_ref().to_vec().into())
     }
@@ -334,16 +334,15 @@ impl<D> Verifier for RsaPssVerifier<D>
 where
     D: Digest + FixedOutputReset,
 {
-    type VerifyError = CipherError;
+    type VerifyError = Error;
 
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 
         let key = pss::VerifyingKey::<D>::from(self.key);
-        let sig = pss::Signature::try_from(sig).map_err(|_| CipherError::InvalidKey)?;
+        let sig = pss::Signature::try_from(sig).map_err(|_| Error::InvalidKey)?;
 
-        key.verify_prehash(&hash, &sig)
-            .map_err(|_| CipherError::Verify)
+        key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
 }

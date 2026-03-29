@@ -24,7 +24,7 @@ use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// ES256 (ECDSA + P-256 + SHA-256) signing key.
 #[cfg(feature = "p256")]
@@ -103,9 +103,8 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     /// Create a signing key from raw scalar bytes (JWK `d` parameter).
-    pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let key =
-            ecdsa::SigningKey::<C>::from_slice(d.as_ref()).map_err(|_| CipherError::InvalidKey)?;
+    pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, Error> {
+        let key = ecdsa::SigningKey::<C>::from_slice(d.as_ref()).map_err(|_| Error::InvalidKey)?;
         Ok(Self { key })
     }
 
@@ -137,7 +136,7 @@ where
         = EcdsaSigner<'a, C>
     where
         Self: 'a;
-    type SignError = CipherError;
+    type SignError = Error;
     type VerifyingKey = EcdsaVerifyingKey<C>;
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -149,7 +148,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| CipherError::Sign)?;
+        signer.update(data).map_err(|_| Error::Sign)?;
         signer.finish()
     }
 
@@ -169,7 +168,7 @@ where
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(EcdsaVerifier {
@@ -184,7 +183,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -264,9 +263,9 @@ where
     FieldBytesSize<C>: ModulusSize,
 {
     /// Create a verifying key from SEC1-encoded point bytes.
-    pub fn from_sec1_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+    pub fn from_sec1_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Error> {
         let key = ecdsa::VerifyingKey::<C>::from_sec1_bytes(bytes.as_ref())
-            .map_err(|_| CipherError::InvalidKey)?;
+            .map_err(|_| Error::InvalidKey)?;
         Ok(Self { key })
     }
 
@@ -307,7 +306,7 @@ where
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(EcdsaVerifier {
@@ -322,7 +321,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -355,14 +354,14 @@ where
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
     SignatureSize<C>: ArraySize,
 {
-    type SignError = CipherError;
+    type SignError = Error;
 
     fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize();
         let sig: Signature<C> = self
             .key
             .sign_prehash(hash.as_ref())
-            .map_err(|_| CipherError::Sign)?;
+            .map_err(|_| Error::Sign)?;
         Ok(sig.to_bytes().as_slice().to_vec().into())
     }
 }
@@ -394,14 +393,13 @@ where
     C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
 {
-    type VerifyError = CipherError;
+    type VerifyError = Error;
 
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize();
-        let sig =
-            Signature::<C>::from_slice(signature.as_ref()).map_err(|_| CipherError::InvalidKey)?;
+        let sig = Signature::<C>::from_slice(signature.as_ref()).map_err(|_| Error::InvalidKey)?;
         self.key
             .verify_prehash(hash.as_ref(), &sig)
-            .map_err(|_| CipherError::Verify)
+            .map_err(|_| Error::Verify)
     }
 }

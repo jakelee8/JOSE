@@ -63,7 +63,7 @@ use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use sha2::{Digest, Sha256};
 
-use crate::crypto::CipherError;
+use crate::crypto::Error;
 
 /// Curve identifiers for ECDH operations.
 ///
@@ -201,15 +201,15 @@ where
     /// # Errors
     /// Returns `CipherError::InvalidKey` if the coordinates are invalid or the
     /// point is not on the curve.
-    pub fn from_components(x: impl AsRef<[u8]>, y: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let x = x.as_ref().try_into().map_err(|_| CipherError::InvalidKey)?;
-        let y = y.as_ref().try_into().map_err(|_| CipherError::InvalidKey)?;
+    pub fn from_components(x: impl AsRef<[u8]>, y: impl AsRef<[u8]>) -> Result<Self, Error> {
+        let x = x.as_ref().try_into().map_err(|_| Error::InvalidKey)?;
+        let y = y.as_ref().try_into().map_err(|_| Error::InvalidKey)?;
 
         let point = AffineCoordinates::from_coordinates(&x, &y)
             .into_option()
-            .ok_or(CipherError::InvalidKey)?;
+            .ok_or(Error::InvalidKey)?;
 
-        let inner = PublicKey::from_affine(point).map_err(|_| CipherError::InvalidKey)?;
+        let inner = PublicKey::from_affine(point).map_err(|_| Error::InvalidKey)?;
 
         Ok(Self { inner })
     }
@@ -286,8 +286,8 @@ where
     ///
     /// # Errors
     /// Returns `CipherError::InvalidKey` if the scalar is zero or >= curve order.
-    pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let inner = SecretKey::<C>::from_slice(d.as_ref()).map_err(|_| CipherError::InvalidKey)?;
+    pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, Error> {
+        let inner = SecretKey::<C>::from_slice(d.as_ref()).map_err(|_| Error::InvalidKey)?;
         Ok(Self { inner })
     }
 
@@ -298,8 +298,8 @@ where
     ///
     /// # Errors
     /// Returns `CipherError::Rng` if the RNG fails.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
-        let inner = SecretKey::try_generate_from_rng(rng).map_err(|_| CipherError::Rng)?;
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
+        let inner = SecretKey::try_generate_from_rng(rng).map_err(|_| Error::Rng)?;
         Ok(Self { inner })
     }
 

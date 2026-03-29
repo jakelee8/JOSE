@@ -16,7 +16,7 @@ use rsa::{BoxedUint, Oaep, RsaPrivateKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 
-use crate::crypto::{CipherError, UnwrappingKey, WrappedKey, WrappingKey};
+use crate::crypto::{Error, UnwrappingKey, WrappedKey, WrappingKey};
 
 /// RSA-OAEP with SHA-1 public key type alias.
 pub type RsaOaepSha1PublicKey = RsaOaepPublicKey<Sha1>;
@@ -44,7 +44,7 @@ impl<D> RsaOaepPrivateKey<D> {
         n: impl AsRef<[u8]>,
         e: impl AsRef<[u8]>,
         d: impl AsRef<[u8]>,
-    ) -> Result<Self, CipherError> {
+    ) -> Result<Self, Error> {
         Self::from_components_with_primes(n, e, d, iter::empty::<&[u8]>())
     }
 
@@ -54,7 +54,7 @@ impl<D> RsaOaepPrivateKey<D> {
         e: impl AsRef<[u8]>,
         d: impl AsRef<[u8]>,
         primes: impl Iterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<Self, CipherError> {
+    ) -> Result<Self, Error> {
         let n = BoxedUint::from_be_slice_vartime(n.as_ref());
         let e = BoxedUint::from_be_slice_vartime(e.as_ref());
         let d = BoxedUint::from_be_slice_vartime(d.as_ref());
@@ -63,10 +63,10 @@ impl<D> RsaOaepPrivateKey<D> {
             .collect::<Vec<_>>();
 
         let mut key =
-            RsaPrivateKey::from_components(n, e, d, primes).map_err(|_| CipherError::InvalidKey)?;
+            RsaPrivateKey::from_components(n, e, d, primes).map_err(|_| Error::InvalidKey)?;
 
         // Precompute CRT parameters for faster decryption if possible
-        key.precompute().map_err(|_| CipherError::InvalidKey)?;
+        key.precompute().map_err(|_| Error::InvalidKey)?;
 
         Ok(Self {
             key,
@@ -75,20 +75,17 @@ impl<D> RsaOaepPrivateKey<D> {
     }
 
     /// Generate a random RSA private key with the default key size (2048 bits).
-    pub fn random(rng: &mut impl CryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl CryptoRng) -> Result<Self, Error> {
         Self::random_with_key_size(rng, RSA_MIN_KEY_SIZE)
     }
 
     /// Generate a random RSA private key with a specific key size (in bytes).
-    pub fn random_with_key_size(
-        rng: &mut impl CryptoRng,
-        key_size: usize,
-    ) -> Result<Self, CipherError> {
+    pub fn random_with_key_size(rng: &mut impl CryptoRng, key_size: usize) -> Result<Self, Error> {
         if key_size < RSA_MIN_KEY_SIZE || key_size > RSA_MAX_KEY_SIZE {
-            return Err(CipherError::InvalidKey);
+            return Err(Error::InvalidKey);
         }
         RsaPrivateKey::new(rng, key_size * 8)
-            .map_err(|_| CipherError::InvalidKey)?
+            .map_err(|_| Error::InvalidKey)?
             .try_into()
     }
 
@@ -146,10 +143,10 @@ impl<D> RsaOaepPrivateKey<D> {
 }
 
 impl<D> TryFrom<RsaPrivateKey> for RsaOaepPrivateKey<D> {
-    type Error = CipherError;
+    type Error = Error;
 
     fn try_from(mut key: RsaPrivateKey) -> Result<Self, Self::Error> {
-        key.precompute().map_err(|_| CipherError::InvalidKey)?;
+        key.precompute().map_err(|_| Error::InvalidKey)?;
         Ok(Self {
             key,
             _digest: PhantomData,
@@ -162,7 +159,7 @@ where
     D: Digest + FixedOutputReset,
     Oaep<D>: PaddingScheme,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn wrap(
         &self,
@@ -171,7 +168,7 @@ where
     ) -> Result<WrappedKey, Self::Error> {
         let encrypted_key = Oaep::<D>::new()
             .encrypt(rng, self.key.as_public_key(), cek.as_ref())
-            .map_err(|_| CipherError::Aead)?;
+            .map_err(|_| Error::Encryption)?;
 
         Ok(WrappedKey {
             encrypted_key: encrypted_key.into(),
@@ -187,12 +184,12 @@ where
     D: Digest + FixedOutputReset,
     Oaep<D>: PaddingScheme,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         self.key
             .decrypt(Oaep::<D>::new(), wrapped_key.encrypted_key.as_ref())
-            .map_err(|_| CipherError::Aead)
+            .map_err(|_| Error::Decryption)
             .map(Secret::from)
     }
 }
@@ -214,10 +211,10 @@ impl<D> From<RsaPublicKey> for RsaOaepPublicKey<D> {
 
 impl<D> RsaOaepPublicKey<D> {
     /// Create a new RSA-OAEP public key from unsigned big-endian octet sequence components.
-    pub fn from_components(n: impl AsRef<[u8]>, e: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+    pub fn from_components(n: impl AsRef<[u8]>, e: impl AsRef<[u8]>) -> Result<Self, Error> {
         let n = BoxedUint::from_be_slice_vartime(n.as_ref());
         let e = BoxedUint::from_be_slice_vartime(e.as_ref());
-        let key = RsaPublicKey::new(n, e).map_err(|_| CipherError::InvalidKey)?;
+        let key = RsaPublicKey::new(n, e).map_err(|_| Error::InvalidKey)?;
         Ok(Self {
             key,
             _digest: PhantomData,
@@ -240,7 +237,7 @@ where
     D: Digest + FixedOutputReset,
     Oaep<D>: PaddingScheme,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn wrap(
         &self,
@@ -249,7 +246,7 @@ where
     ) -> Result<WrappedKey, Self::Error> {
         let encrypted_key = Oaep::<D>::new()
             .encrypt(rng, &self.key, cek.as_ref())
-            .map_err(|_| CipherError::Aead)?;
+            .map_err(|_| Error::Encryption)?;
 
         Ok(WrappedKey {
             encrypted_key: encrypted_key.into(),

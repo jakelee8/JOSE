@@ -14,7 +14,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::{Signer, SigningKey, Verifier, VerifyingKey};
-use crate::{Signing, crypto::CipherError};
+use crate::{Signing, crypto::Error};
 
 /// HS256 (HMAC + SHA-256) signer
 pub type Hs256Signer = HmacKey<Hmac<Sha256>>;
@@ -47,9 +47,9 @@ where
     ///
     /// # Arguments
     /// * `k` - The HMAC key bytes
-    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, Error> {
         if k.as_ref().len() != D::key_size() {
-            return Err(CipherError::InvalidKey);
+            return Err(Error::InvalidKey);
         }
 
         Ok(Self {
@@ -59,9 +59,9 @@ where
     }
 
     /// Generate a random key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut k = vec![0u8; D::KeySize::USIZE];
-        rng.try_fill_bytes(&mut k).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut k).map_err(|_| Error::Rng)?;
 
         Ok(Self {
             k: k.into(),
@@ -94,7 +94,7 @@ where
     where
         Self: 'a;
 
-    type SignError = CipherError;
+    type SignError = Error;
     type VerifyingKey = Self;
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -104,8 +104,8 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut state = self.signer()?;
-        state.update(data).map_err(|_| CipherError::Sign)?;
-        Signer::finish(state).map_err(|_| CipherError::Sign)
+        state.update(data).map_err(|_| Error::Sign)?;
+        Signer::finish(state).map_err(|_| Error::Sign)
     }
 
     fn verifying_key(&self) -> Self::VerifyingKey {
@@ -125,7 +125,7 @@ where
     where
         Self: 'a;
 
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         let hmac = D::new_from_slice(&self.k)?;
@@ -138,7 +138,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut state = self.verifier()?;
-        state.update(data).map_err(|_| CipherError::Sign)?;
+        state.update(data).map_err(|_| Error::Sign)?;
         Verifier::finish(state, signature)
     }
 }
@@ -179,7 +179,7 @@ impl<D> Verifier for HmacState<D>
 where
     D: EagerHash,
 {
-    type VerifyError = CipherError;
+    type VerifyError = Error;
 
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         if self
@@ -191,19 +191,19 @@ where
         {
             Ok(())
         } else {
-            Err(CipherError::Verify)
+            Err(Error::Verify)
         }
     }
 }
 
-impl From<InvalidKey> for CipherError {
+impl From<InvalidKey> for Error {
     fn from(_: InvalidKey) -> Self {
-        CipherError::InvalidKey
+        Error::InvalidKey
     }
 }
 
-impl From<InvalidLength> for CipherError {
+impl From<InvalidLength> for Error {
     fn from(_: InvalidLength) -> Self {
-        CipherError::InvalidKey
+        Error::InvalidKey
     }
 }

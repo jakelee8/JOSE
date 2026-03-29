@@ -14,7 +14,7 @@ use subtle::ConstantTimeEq;
 
 use super::Encrypted;
 use crate::Encryption;
-use crate::crypto::{CipherError, DecryptingKey, EncryptingKey};
+use crate::crypto::{DecryptingKey, EncryptingKey, Error};
 
 /// Type alias for A128CBC-HS256 keys (AES-128 with SHA-256).
 pub type Aes128CbcHmacSha256Key = AesCbcHmacKey<Aes128, Sha256>;
@@ -50,10 +50,10 @@ where
     /// # Arguments
     /// * `k` - The composite key bytes (must be twice the AES key size:
     ///   first half for MAC, second half for encryption)
-    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, Error> {
         let expected_len = A::key_size() * 2;
         if k.as_ref().len() != expected_len {
-            return Err(CipherError::InvalidKeyLength);
+            return Err(Error::InvalidKeyLength);
         }
 
         Ok(Self {
@@ -63,9 +63,9 @@ where
     }
 
     /// Generate a random key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut k = alloc::vec![0u8; A::key_size() * 2];
-        rng.try_fill_bytes(&mut k).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut k).map_err(|_| Error::Rng)?;
         Self::from_bytes(k)
     }
 
@@ -94,7 +94,7 @@ where
     D: EagerHash,
     Hmac<D>: Mac + KeyInit,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn encrypt(
         &self,
@@ -109,14 +109,14 @@ where
 
         let key = self.k.as_ref();
         if key.len() != mac_key_len + enc_key_len {
-            return Err(CipherError::InvalidKeyLength);
+            return Err(Error::InvalidKeyLength);
         }
 
         let mac_key = &key[..mac_key_len];
         let enc_key = &key[mac_key_len..];
 
         let mut iv = [0u8; 16];
-        rng.try_fill_bytes(&mut iv).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut iv).map_err(|_| Error::Rng)?;
 
         // E = CBC-PKCS7-ENC(ENC_KEY, P),
         let encryptor = cbc::Encryptor::<A>::new_from_slices(enc_key, iv.as_ref())?;
@@ -150,7 +150,7 @@ where
     D: EagerHash,
     Hmac<D>: Mac + KeyInit,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn decrypt(
         &self,
@@ -184,14 +184,14 @@ where
 ///
 /// # Errors
 ///
-/// Returns `CipherError::Aead` if authentication tag verification fails.
+/// Returns `CipherError::Decryption` if authentication tag verification fails.
 pub fn aes_cbc_hmac_decrypt<Aes, D>(
     key: impl AsRef<[u8]>,
     ciphertext: impl AsRef<[u8]>,
     aad: impl AsRef<[u8]>,
     tag: impl AsRef<[u8]>,
     iv: impl AsRef<[u8]>,
-) -> Result<Secret, CipherError>
+) -> Result<Secret, Error>
 where
     Aes: KeyInit + KeySizeUser + BlockCipherDecrypt,
     cbc::Decryptor<Aes>: KeyIvInit,
@@ -207,7 +207,7 @@ where
 
     let key = key.as_ref();
     if key.len() != mac_key_len + enc_key_len {
-        return Err(CipherError::InvalidKeyLength);
+        return Err(Error::InvalidKeyLength);
     }
 
     let mac_key = &key[..mac_key_len];
@@ -215,7 +215,7 @@ where
 
     let iv = iv.as_ref();
     if iv.len() != 16 {
-        return Err(CipherError::InvalidIvLength);
+        return Err(Error::InvalidIvLength);
     }
 
     let ciphertext = ciphertext.as_ref();
@@ -223,7 +223,7 @@ where
     let tag_len = mac_key_len;
 
     if tag.len() != tag_len {
-        return Err(CipherError::Aead);
+        return Err(Error::Decryption);
     }
 
     let al: u64 = (aad.as_ref().len() as u64) * 8;
@@ -241,14 +241,14 @@ where
 
     // Verify tag in constant time
     if computed_tag.ct_ne(&tag).into() {
-        return Err(CipherError::Aead);
+        return Err(Error::Decryption);
     }
 
     // P = CBC-PKCS7-DEC(ENC_KEY, E),
     let decryptor = cbc::Decryptor::<Aes>::new_from_slices(enc_key, iv)?;
     let plaintext = decryptor
         .decrypt_padded_vec::<Pkcs7>(ciphertext)
-        .map_err(|_| CipherError::Aead)?;
+        .map_err(|_| Error::Decryption)?;
 
     Ok(plaintext.into())
 }

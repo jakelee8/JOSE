@@ -39,7 +39,7 @@ use rand_core::TryCryptoRng;
 use sha2::{Sha256, Sha384, Sha512};
 
 use super::{AesKwKey, UnwrappingKey, WrappedKey, WrappingKey};
-use crate::crypto::CipherError;
+use crate::crypto::Error;
 
 /// PBES2-HS256+A128KW key type.
 pub type Pbes2Hs256A128Key = Pbes2Key<ConfigHs256A128>;
@@ -152,7 +152,7 @@ where
     C: Pbes2Config,
     C::Cipher: BlockCipherEncrypt<BlockSize = U16>,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn wrap(
         &self,
@@ -162,7 +162,7 @@ where
         // Generate a random salt input (p2s). SALT_SIZE >= 8 satisfies RFC 7518 Section 4.8.1.1.
         let mut salt_input = [0u8; SALT_SIZE];
         rng.try_fill_bytes(&mut salt_input)
-            .map_err(|_| CipherError::Rng)?;
+            .map_err(|_| Error::Rng)?;
 
         // Build the full salt: UTF8(alg) || 0x00 || Salt Input
         let salt = build_salt(C::ALG_NAME, &salt_input);
@@ -191,18 +191,18 @@ where
     C: Pbes2Config,
     C::Cipher: BlockCipherDecrypt<BlockSize = U16>,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         // Extract salt from wrapped key
         let salt_input = wrapped_key
             .salt
             .as_ref()
-            .ok_or(CipherError::MissingSalt)?
+            .ok_or(Error::MissingSalt)?
             .as_ref();
 
         if salt_input.len() < 8 {
-            return Err(CipherError::InvalidSaltLength);
+            return Err(Error::InvalidSaltLength);
         }
 
         // Build the full salt: UTF8(alg) || 0x00 || Salt Input

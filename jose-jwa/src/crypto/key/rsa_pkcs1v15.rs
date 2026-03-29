@@ -12,7 +12,7 @@ use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::{Error, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// RS256 (RSA-PKCS#1 v1.5 + SHA-256) signing key
 pub type Rs256SigningKey = RsaPkcs1v15SigningKey<Sha256>;
@@ -119,7 +119,7 @@ where
         = RsaPkcs1v15Signer<'a, D>
     where
         Self: 'a;
-    type SignError = CipherError;
+    type SignError = Error;
     type VerifyingKey = RsaPkcs1v15VerifyingKey<D>;
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
@@ -132,7 +132,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| CipherError::Sign)?;
+        signer.update(data).map_err(|_| Error::Sign)?;
         signer.finish()
     }
 
@@ -152,7 +152,7 @@ where
         = RsaPkcs1v15Verifier<D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(RsaPkcs1v15Verifier {
@@ -168,7 +168,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -222,7 +222,7 @@ where
         = RsaPkcs1v15Verifier<D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type Error = Error;
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
         Ok(RsaPkcs1v15Verifier {
@@ -238,7 +238,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| CipherError::Verify)?;
+        verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)
     }
 }
@@ -276,14 +276,14 @@ impl<'a, D> Signer for RsaPkcs1v15Signer<'a, D>
 where
     D: Digest + digest::const_oid::AssociatedOid,
 {
-    type SignError = CipherError;
+    type SignError = Error;
 
     fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize().to_vec();
 
-        let key = pkcs1v15::SigningKey::<D>::try_from(self.key.clone())
-            .map_err(|_| CipherError::InvalidKey)?;
-        let sig = key.sign_prehash(&hash).map_err(|_| CipherError::Sign)?;
+        let key =
+            pkcs1v15::SigningKey::<D>::try_from(self.key.clone()).map_err(|_| Error::InvalidKey)?;
+        let sig = key.sign_prehash(&hash).map_err(|_| Error::Sign)?;
 
         Ok(sig.to_bytes().as_ref().to_vec().into())
     }
@@ -312,17 +312,15 @@ impl<D> Verifier for RsaPkcs1v15Verifier<D>
 where
     D: Digest + digest::const_oid::AssociatedOid,
 {
-    type VerifyError = CipherError;
+    type VerifyError = Error;
 
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 
-        let key =
-            pkcs1v15::VerifyingKey::<D>::try_from(self.key).map_err(|_| CipherError::InvalidKey)?;
-        let sig = pkcs1v15::Signature::try_from(sig).map_err(|_| CipherError::InvalidKey)?;
+        let key = pkcs1v15::VerifyingKey::<D>::try_from(self.key).map_err(|_| Error::InvalidKey)?;
+        let sig = pkcs1v15::Signature::try_from(sig).map_err(|_| Error::InvalidKey)?;
 
-        key.verify_prehash(&hash, &sig)
-            .map_err(|_| CipherError::Verify)
+        key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
 }

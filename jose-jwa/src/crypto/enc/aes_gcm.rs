@@ -17,7 +17,7 @@ use digest::consts::U12;
 use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
-use super::{CipherError, DecryptingKey, Encrypted, EncryptingKey};
+use super::{DecryptingKey, Encrypted, EncryptingKey, Error};
 use crate::Encryption;
 
 /// AES-128-GCM content encryption key (128-bit key).
@@ -47,9 +47,9 @@ where
     ///
     /// # Arguments
     /// * `k` - The key bytes (16 bytes for A128GCM, 24 for A192GCM, 32 for A256GCM)
-    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, Error> {
         if k.as_ref().len() != A::key_size() {
-            return Err(CipherError::InvalidKeyLength);
+            return Err(Error::InvalidKeyLength);
         }
 
         Ok(Self {
@@ -59,9 +59,9 @@ where
     }
 
     /// Generate a random key.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut k = vec![0u8; A::key_size()];
-        rng.try_fill_bytes(&mut k).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut k).map_err(|_| Error::Rng)?;
         Self::from_bytes(k)
     }
 
@@ -86,7 +86,7 @@ where
     A: KeySizeUser,
     AesGcm<A, U12>: KeyInit + AeadInOut,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn encrypt(
         &self,
@@ -95,18 +95,19 @@ where
         aad: impl AsRef<[u8]>,
     ) -> Result<Encrypted, Self::Error> {
         let mut iv = [0u8; 12];
-        rng.try_fill_bytes(&mut iv).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut iv).map_err(|_| Error::Rng)?;
 
         let cipher = AesGcm::<A, U12>::new_from_slice(self.k.as_ref())?;
-        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| CipherError::InvalidIvLength)?;
+        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| Error::InvalidIvLength)?;
 
         let mut ciphertext = Vec::new();
         ciphertext.resize(plaintext.as_ref().len(), 0);
         let inout =
-            InOutBuf::new(plaintext.as_ref(), &mut ciphertext).map_err(|_| CipherError::Aead)?;
+            InOutBuf::new(plaintext.as_ref(), &mut ciphertext).map_err(|_| Error::Encryption)?;
 
         let tag = cipher
-            .encrypt_inout_detached(&nonce, aad.as_ref(), inout)?
+            .encrypt_inout_detached(&nonce, aad.as_ref(), inout)
+            .map_err(|_| Error::Encryption)?
             .to_vec();
 
         Ok(Encrypted {
@@ -121,7 +122,7 @@ impl<A> DecryptingKey for AesGcmKey<A>
 where
     AesGcm<A, U12>: KeyInit + AeadInOut,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn decrypt(
         &self,
@@ -131,22 +132,18 @@ where
         iv: impl AsRef<[u8]>,
     ) -> Result<Secret, Self::Error> {
         let cipher = AesGcm::<A, U12>::new_from_slice(self.k.as_ref())?;
-        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| CipherError::InvalidIvLength)?;
+        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| Error::InvalidIvLength)?;
 
         let ciphertext = ciphertext.as_ref();
         let mut plaintext = Vec::new();
         plaintext.resize(ciphertext.len(), 0);
-        let inout = InOutBuf::new(ciphertext, &mut plaintext).map_err(|_| CipherError::Aead)?;
+        let inout = InOutBuf::new(ciphertext, &mut plaintext).map_err(|_| Error::Decryption)?;
 
-        let tag = tag.as_ref().try_into().map_err(|_| CipherError::Aead)?;
-        cipher.decrypt_inout_detached(&nonce, aad.as_ref(), inout, &tag)?;
+        let tag = tag.as_ref().try_into().map_err(|_| Error::Decryption)?;
+        cipher
+            .decrypt_inout_detached(&nonce, aad.as_ref(), inout, &tag)
+            .map_err(|_| Error::Decryption)?;
 
         Ok(Secret::from(plaintext))
-    }
-}
-
-impl From<::aes_gcm::Error> for CipherError {
-    fn from(_err: ::aes_gcm::Error) -> Self {
-        Self::Aead
     }
 }

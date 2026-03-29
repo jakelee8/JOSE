@@ -9,8 +9,6 @@
 mod aes_cbc_hmac;
 mod aes_gcm;
 
-use core::error::Error;
-
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use zeroize::Zeroize;
@@ -20,7 +18,7 @@ pub use self::aes_cbc_hmac::*;
 #[cfg(feature = "aes-gcm")]
 pub use self::aes_gcm::*;
 
-use super::CipherError;
+pub use crate::Error;
 
 /// Trait for keys that can encrypt content.
 ///
@@ -29,7 +27,7 @@ use super::CipherError;
 /// algorithms require the full plaintext.
 pub trait EncryptingKey {
     /// The error type returned by encryption operations.
-    type Error: Error;
+    type Error: core::error::Error;
 
     /// Encrypt plaintext.
     ///
@@ -55,7 +53,7 @@ pub trait EncryptingKey {
 /// algorithms require the full ciphertext.
 pub trait DecryptingKey {
     /// The error type returned by decryption operations.
-    type Error: Error;
+    type Error: core::error::Error;
 
     /// Decrypt ciphertext.
     ///

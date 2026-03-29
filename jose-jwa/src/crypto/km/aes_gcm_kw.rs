@@ -21,7 +21,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{UnwrappingKey, WrappedKey, WrappingKey};
-use crate::crypto::CipherError;
+use crate::crypto::Error;
 
 /// Type alias for AES-192-GCM with 96-bit nonce (for AES-GCM-KW).
 pub type Aes192Gcm = AesGcm<Aes192, U12>;
@@ -54,8 +54,8 @@ where
     A: AeadInOut + KeyInit,
 {
     /// Create a new AES-GCM-KW key from raw bytes.
-    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, CipherError> {
-        let cipher = A::new_from_slice(k.as_ref()).map_err(|_| CipherError::InvalidKeyLength)?;
+    pub fn from_bytes(k: impl AsRef<[u8]>) -> Result<Self, Error> {
+        let cipher = A::new_from_slice(k.as_ref()).map_err(|_| Error::InvalidKeyLength)?;
         Ok(Self {
             k: k.as_ref().to_vec().into(),
             kw: cipher,
@@ -63,9 +63,9 @@ where
     }
 
     /// Generate a random key with the specified size.
-    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, CipherError> {
+    pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let mut key = Key::<A>::default();
-        rng.try_fill_bytes(&mut key).map_err(|_| CipherError::Rng)?;
+        rng.try_fill_bytes(&mut key).map_err(|_| Error::Rng)?;
         Ok(key.into())
     }
 
@@ -79,7 +79,7 @@ impl<A> WrappingKey for AesGcmKwKey<A>
 where
     A: AeadInOut + KeyInit,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn wrap(
         &self,
@@ -88,17 +88,17 @@ where
     ) -> Result<WrappedKey, Self::Error> {
         // Generate random 96-bit IV per RFC 7518 Section 4.7
         let mut iv = [0u8; 12];
-        rng.try_fill_bytes(&mut iv).map_err(|_| CipherError::Rng)?;
-        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| CipherError::Aead)?;
+        rng.try_fill_bytes(&mut iv).map_err(|_| Error::Rng)?;
+        let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| Error::Encryption)?;
 
         let cek = cek.as_ref();
         let mut ciphertext = vec![0u8; cek.len()];
-        let inout = InOutBuf::new(cek, &mut ciphertext).map_err(|_| CipherError::Aead)?;
+        let inout = InOutBuf::new(cek, &mut ciphertext).map_err(|_| Error::Encryption)?;
 
         let tag = self
             .kw
             .encrypt_inout_detached(&nonce, &[], inout)
-            .map_err(|_| CipherError::Aead)?;
+            .map_err(|_| Error::Encryption)?;
 
         Ok(WrappedKey {
             encrypted_key: ciphertext.into(),
@@ -113,32 +113,32 @@ impl<A> UnwrappingKey for AesGcmKwKey<A>
 where
     A: AeadInOut + KeyInit,
 {
-    type Error = CipherError;
+    type Error = Error;
 
     fn unwrap(&self, wrapped_key: &WrappedKey) -> Result<Secret, Self::Error> {
         let nonce = wrapped_key
             .iv
             .as_ref()
-            .ok_or(CipherError::MissingIv)?
+            .ok_or(Error::MissingIv)?
             .as_ref()
             .try_into()
-            .map_err(|_| CipherError::InvalidIvLength)?;
+            .map_err(|_| Error::InvalidIvLength)?;
 
         let tag = wrapped_key
             .tag
             .as_ref()
-            .ok_or(CipherError::MissingTag)?
+            .ok_or(Error::MissingTag)?
             .as_ref()
             .try_into()
-            .map_err(|_| CipherError::InvalidTagLength)?;
+            .map_err(|_| Error::InvalidTagLength)?;
 
         let encrypted_key = wrapped_key.encrypted_key.as_ref();
         let mut plaintext = vec![0u8; encrypted_key.len()];
-        let inout = InOutBuf::new(encrypted_key, &mut plaintext).map_err(|_| CipherError::Aead)?;
+        let inout = InOutBuf::new(encrypted_key, &mut plaintext).map_err(|_| Error::Decryption)?;
 
         self.kw
             .decrypt_inout_detached(&nonce, &[], inout, &tag)
-            .map_err(|_| CipherError::Aead)?;
+            .map_err(|_| Error::Decryption)?;
 
         Ok(plaintext.into())
     }
@@ -160,10 +160,10 @@ impl<A> TryFrom<Secret> for AesGcmKwKey<A>
 where
     A: AeadInOut + KeyInit,
 {
-    type Error = CipherError;
+    type Error = Error;
     fn try_from(oct: Secret) -> Result<Self, Self::Error> {
         Ok(Self {
-            kw: A::new_from_slice(&oct).map_err(|_| CipherError::InvalidKeyLength)?,
+            kw: A::new_from_slice(&oct).map_err(|_| Error::InvalidKeyLength)?,
             k: oct,
         })
     }

@@ -43,6 +43,7 @@ mod alg;
 /// - Cryptographic traits for algorithm abstraction
 pub mod crypto;
 mod enc;
+mod error;
 mod sign;
 
 pub use self::alg::*;
@@ -55,4 +56,5 @@ pub use self::alg::*;
 ))]
 pub use self::crypto::KeyManagement;
 pub use self::enc::*;
+pub use self::error::Error;
 pub use self::sign::*;
