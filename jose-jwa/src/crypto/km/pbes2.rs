@@ -27,10 +27,10 @@
 
 use core::marker::PhantomData;
 
-use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, KeyInit};
-use aes_gcm::KeySizeUser;
 use aes_kw::aes::{Aes128, Aes192, Aes256};
-use aes_kw::cipher::Key;
+use aes_kw::cipher::{
+    BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, Key, KeyInit, KeySizeUser,
+};
 use digest::consts::U16;
 use hmac::EagerHash;
 use jose_b64::serde::Secret;

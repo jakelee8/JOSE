@@ -144,3 +144,9 @@ where
         Ok(Secret::from(plaintext))
     }
 }
+
+impl From<::aes_gcm::Error> for CipherError {
+    fn from(_err: ::aes_gcm::Error) -> Self {
+        Self::Aead
+    }
+}

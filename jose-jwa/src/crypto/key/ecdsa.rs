@@ -8,11 +8,12 @@
 
 #![cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
 
-use alloc::vec::Vec;
 use core::convert::Infallible;
 
+use alloc::borrow::ToOwned;
 use digest::Digest;
 use ecdsa::hazmat::DigestAlgorithm;
+use ecdsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use ecdsa::{EcdsaCurve, Signature, SignatureSize};
 use elliptic_curve::array::ArraySize;
 use elliptic_curve::ops::Invert;
@@ -20,14 +21,10 @@ use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
 use elliptic_curve::subtle::CtOption;
 use elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
 use jose_b64::serde::{Bytes, Secret};
-use signature::hazmat::{PrehashSigner, PrehashVerifier};
+use jose_b64::stream::Update;
 
 use crate::Signing;
-use crate::crypto::{
-    CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey as VerifyingKeyTrait,
-};
-
-// Type aliases for common curves
+use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// ES256 (ECDSA + P-256 + SHA-256) signing key.
 #[cfg(feature = "p256")]
@@ -119,8 +116,7 @@ where
 
     /// Return the private scalar (JWK `d` parameter).
     pub fn d(&self) -> Secret {
-        let bytes = self.key.to_bytes();
-        Secret::from(bytes.as_slice().to_vec())
+        self.key.to_bytes().to_vec().into()
     }
 
     /// Get the corresponding verifying key.
@@ -141,23 +137,30 @@ where
         = EcdsaSigner<'a, C>
     where
         Self: 'a;
-    type Error = CipherError;
+    type SignError = CipherError;
+    type VerifyingKey = EcdsaVerifyingKey<C>;
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(EcdsaSigner {
             digest: C::Digest::new(),
             key: &self.key,
         })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::Error> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
         signer.update(data).map_err(|_| CipherError::Sign)?;
         signer.finish()
     }
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        EcdsaVerifyingKey {
+            key: self.key.verifying_key().clone(),
+        }
+    }
 }
 
-impl<C> VerifyingKeyTrait for EcdsaSigningKey<C>
+impl<C> VerifyingKey for EcdsaSigningKey<C>
 where
     C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
@@ -183,6 +186,66 @@ where
         let mut verifier = self.verifier()?;
         verifier.update(data).map_err(|_| CipherError::Verify)?;
         verifier.finish(signature)
+    }
+}
+
+impl<C> AsRef<ecdsa::SigningKey<C>> for EcdsaSigningKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+{
+    fn as_ref(&self) -> &ecdsa::SigningKey<C> {
+        &self.key
+    }
+}
+
+impl<C> From<ecdsa::SigningKey<C>> for EcdsaSigningKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+{
+    fn from(key: ecdsa::SigningKey<C>) -> Self {
+        Self { key }
+    }
+}
+
+impl<C> From<&ecdsa::SigningKey<C>> for EcdsaSigningKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+{
+    fn from(key: &ecdsa::SigningKey<C>) -> Self {
+        Self {
+            key: key.to_owned(),
+        }
+    }
+}
+
+impl<C> From<EcdsaSigningKey<C>> for EcdsaVerifyingKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn from(key: EcdsaSigningKey<C>) -> Self {
+        key.verifying_key()
+    }
+}
+
+impl<C> From<&EcdsaSigningKey<C>> for EcdsaVerifyingKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
+    FieldBytesSize<C>: ModulusSize,
+{
+    fn from(key: &EcdsaSigningKey<C>) -> Self {
+        key.verifying_key()
+    }
+}
+
+impl<C> From<EcdsaSigningKey<C>> for ecdsa::SigningKey<C>
+where
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+{
+    fn from(key: EcdsaSigningKey<C>) -> Self {
+        key.key
     }
 }
 
@@ -233,14 +296,9 @@ where
             .to_vec()
             .into()
     }
-
-    /// Export the public key as SEC1-encoded bytes.
-    pub fn to_sec1_bytes(&self, compress: bool) -> Vec<u8> {
-        self.key.to_sec1_point(compress).as_bytes().to_vec()
-    }
 }
 
-impl<C> VerifyingKeyTrait for EcdsaVerifyingKey<C>
+impl<C> VerifyingKey for EcdsaVerifyingKey<C>
 where
     C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
@@ -297,9 +355,9 @@ where
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
     SignatureSize<C>: ArraySize,
 {
-    type Error = CipherError;
+    type SignError = CipherError;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::Error> {
+    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize();
         let sig: Signature<C> = self
             .key
@@ -336,9 +394,9 @@ where
     C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
 {
-    type Error = CipherError;
+    type VerifyError = CipherError;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize();
         let sig =
             Signature::<C>::from_slice(signature.as_ref()).map_err(|_| CipherError::InvalidKey)?;

@@ -4,14 +4,15 @@ use core::marker::PhantomData;
 
 use digest::{Digest, OutputSizeUser};
 use jose_b64::serde::{Bytes, Secret};
+use jose_b64::stream::Update;
+use rsa::signature::SignatureEncoding;
+use rsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
 use sha2::{Sha256, Sha384, Sha512};
-use signature::SignatureEncoding;
-use signature::hazmat::{PrehashSigner, PrehashVerifier};
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey};
+use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// RS256 (RSA-PKCS#1 v1.5 + SHA-256) signing key
 pub type Rs256SigningKey = RsaPkcs1v15SigningKey<Sha256>;
@@ -118,9 +119,10 @@ where
         = RsaPkcs1v15Signer<'a, D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type SignError = CipherError;
+    type VerifyingKey = RsaPkcs1v15VerifyingKey<D>;
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(RsaPkcs1v15Signer {
             digest: D::new(),
             key: &self.key,
@@ -128,10 +130,17 @@ where
         })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::Error> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
         signer.update(data).map_err(|_| CipherError::Sign)?;
         signer.finish()
+    }
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        RsaPkcs1v15VerifyingKey {
+            key: self.key.to_public_key(),
+            _digest: PhantomData,
+        }
     }
 }
 
@@ -267,9 +276,9 @@ impl<'a, D> Signer for RsaPkcs1v15Signer<'a, D>
 where
     D: Digest + digest::const_oid::AssociatedOid,
 {
-    type Error = CipherError;
+    type SignError = CipherError;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::Error> {
+    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize().to_vec();
 
         let key = pkcs1v15::SigningKey::<D>::try_from(self.key.clone())
@@ -303,9 +312,9 @@ impl<D> Verifier for RsaPkcs1v15Verifier<D>
 where
     D: Digest + digest::const_oid::AssociatedOid,
 {
-    type Error = CipherError;
+    type VerifyError = CipherError;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 

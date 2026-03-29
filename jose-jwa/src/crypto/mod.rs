@@ -1,91 +1,13 @@
-#[cfg(any(
-    feature = "aes-gcm",
-    feature = "aes-kw",
-    feature = "ecdh",
-    feature = "pbes2",
-    feature = "rsa"
-))]
-mod km;
-// #[cfg(feature = "rsa")]
-// mod rsa;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 mod enc;
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-mod sign;
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-mod verify;
-
-// New key module with concrete key types
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa",
-    feature = "aes-gcm",
-    feature = "aes-kw"
-))]
-pub mod key;
+mod key;
+mod km;
 
 use core::error::Error;
 use core::fmt;
 
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa",
-    feature = "aes-gcm",
-    feature = "aes-kw"
-))]
-pub use self::key::*;
-#[cfg(any(
-    feature = "aes-gcm",
-    feature = "aes-kw",
-    feature = "ecdh",
-    feature = "pbes2",
-    feature = "rsa"
-))]
-pub use self::km::*;
-// #[cfg(feature = "rsa")]
-// pub use self::rsa::*;
-#[cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 pub use self::enc::*;
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-pub use self::sign::*;
-#[cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-pub use self::verify::*;
+pub use self::key::*;
+pub use self::km::*;
 
 /// Unified error type for cryptographic operations (content encryption and key management).
 #[derive(Debug)]
@@ -135,13 +57,6 @@ impl fmt::Display for CipherError {
             Self::Rng => f.write_str("random number generation error"),
             Self::UnsupportedAlgorithm => f.write_str("unsupported algorithm"),
         }
-    }
-}
-
-#[cfg(feature = "aes-gcm")]
-impl From<::aes_gcm::Error> for CipherError {
-    fn from(_err: ::aes_gcm::Error) -> Self {
-        Self::Aead
     }
 }
 

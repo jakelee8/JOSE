@@ -62,11 +62,11 @@ pub trait VerifyingKey {
 /// the signature against the accumulated data.
 pub trait Verifier: Update {
     /// The error type returned when finalizing.
-    type Error: Error;
+    type VerifyError: Error;
 
     /// Finish processing payload and verify the signature.
     ///
     /// Consumes the verifier and returns `Ok(())` if the signature is valid,
     /// or an error if verification fails.
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error>;
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::VerifyError>;
 }

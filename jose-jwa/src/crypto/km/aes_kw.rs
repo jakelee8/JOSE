@@ -6,10 +6,10 @@
 
 use alloc::vec;
 
-use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser};
-use aes_gcm::KeySizeUser;
 use aes_kw::aes::{Aes128, Aes192, Aes256};
-use aes_kw::cipher::{Key, KeyInit};
+use aes_kw::cipher::{
+    BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, Key, KeyInit, KeySizeUser,
+};
 use aes_kw::{AesKw, IV_LEN};
 use digest::consts::U16;
 use jose_b64::serde::Secret;

@@ -2,21 +2,19 @@
 
 use alloc::vec;
 use core::{convert::Infallible, marker::PhantomData};
-use digest::InvalidLength;
-use subtle::ConstantTimeEq;
 
-use aes_gcm::KeySizeUser;
-use digest::common::{InvalidKey, TryKeyInit};
-use digest::typenum::Unsigned;
+use hmac::digest::InvalidLength;
+use hmac::digest::common::{InvalidKey, KeySizeUser, TryKeyInit};
+use hmac::digest::typenum::Unsigned;
 use hmac::{EagerHash, Hmac};
 use jose_b64::serde::{Bytes, Secret};
+use jose_b64::stream::Update;
 use rand_core::TryCryptoRng;
 use sha2::{Sha256, Sha384, Sha512};
+use subtle::ConstantTimeEq;
 
-use crate::{
-    Signing,
-    crypto::{CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey},
-};
+use super::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::{Signing, crypto::CipherError};
 
 /// HS256 (HMAC + SHA-256) signer
 pub type Hs256Signer = HmacKey<Hmac<Sha256>>;
@@ -96,17 +94,25 @@ where
     where
         Self: 'a;
 
-    type Error = CipherError;
+    type SignError = CipherError;
+    type VerifyingKey = Self;
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         let hmac = D::new_from_slice(&self.k)?;
         Ok(HmacState { hmac })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::Error> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut state = self.signer()?;
         state.update(data).map_err(|_| CipherError::Sign)?;
         Signer::finish(state).map_err(|_| CipherError::Sign)
+    }
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        Self {
+            k: self.k.clone(),
+            _hmac: PhantomData,
+        }
     }
 }
 
@@ -162,9 +168,9 @@ impl<D> Signer for HmacState<D>
 where
     D: EagerHash,
 {
-    type Error = Infallible;
+    type SignError = Infallible;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::Error> {
+    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         Ok(self.hmac.finalize().to_vec().into())
     }
 }
@@ -173,9 +179,9 @@ impl<D> Verifier for HmacState<D>
 where
     D: EagerHash,
 {
-    type Error = CipherError;
+    type VerifyError = CipherError;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         if self
             .hmac
             .finalize()

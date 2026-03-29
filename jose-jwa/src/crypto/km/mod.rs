@@ -9,17 +9,8 @@
 //! - Content encryption: The key IS the CEK, encrypts content directly
 //! - Key wrap: The wrapping key protects the generated/derived CEK
 
-#![cfg(any(
-    feature = "aes-gcm",
-    feature = "aes-kw",
-    feature = "ecdh",
-    feature = "pbes2",
-    feature = "rsa",
-))]
-
 mod aes_gcm_kw;
 mod aes_kw;
-#[cfg(feature = "ecdh")]
 mod ecdh;
 mod pbes2;
 mod rsa_oaep;

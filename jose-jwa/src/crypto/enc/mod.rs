@@ -6,8 +6,6 @@
 //! - AES-CBC with HMAC-SHA2 ([Section 5.2](https://www.rfc-editor.org/rfc/rfc7518#section-5.2))
 //! - AES-GCM ([Section 5.3](https://www.rfc-editor.org/rfc/rfc7518#section-5.3))
 
-#![cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
-
 mod aes_cbc_hmac;
 mod aes_gcm;
 

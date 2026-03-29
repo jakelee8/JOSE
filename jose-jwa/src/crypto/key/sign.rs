@@ -3,21 +3,12 @@
 //! This module provides concrete implementations of JWS signing and verification
 //! algorithms as defined in RFC 7518.
 
-#![cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-
 use core::error::Error;
-use jose_b64::serde::Bytes;
 
-// Re-export Update so implementors can use it
-pub use jose_b64::stream::Update;
-pub use signature::rand_core::TryCryptoRng;
+use jose_b64::serde::Bytes;
+use jose_b64::stream::Update;
+
+use super::VerifyingKey;
 
 /// A signature creation key.
 ///
@@ -28,20 +19,23 @@ pub use signature::rand_core::TryCryptoRng;
 /// 3. Call `Signer::finish()` to get the signature
 ///
 /// A one-shot `sign()` method is provided for convenience.
-pub trait SigningKey {
+pub trait SigningKey: VerifyingKey {
     /// The error type returned when creating a signer.
-    type Error: Error;
+    type SignError: Error;
 
     /// The signer state type.
     type Signer<'a>: Signer
     where
         Self: 'a;
 
+    /// The signer state type.
+    type VerifyingKey: VerifyingKey;
+
     /// Begin the signature creation process.
     ///
     /// Returns a `Signer` that can be used to incrementally feed data
     /// and then finalize to produce a signature.
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error>;
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError>;
 
     /// Sign data in one shot.
     ///
@@ -51,7 +45,10 @@ pub trait SigningKey {
     /// # Arguments
     /// * `data` - The data to sign
     /// * `rng` - A cryptographically secure random number generator
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::Error>;
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError>;
+
+    /// Get the corresponding verifying key.
+    fn verifying_key(&self) -> Self::VerifyingKey;
 }
 
 /// Signature creation state.
@@ -61,10 +58,10 @@ pub trait SigningKey {
 /// the final signature.
 pub trait Signer: Update {
     /// The error type returned when finalizing.
-    type Error: Error;
+    type SignError: Error;
 
     /// Finish processing payload and create the signature.
     ///
     /// Consumes the signer and returns the signature bytes.
-    fn finish(self) -> Result<Bytes, <Self as Signer>::Error>;
+    fn finish(self) -> Result<Bytes, Self::SignError>;
 }

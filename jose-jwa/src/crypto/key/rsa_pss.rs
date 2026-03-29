@@ -4,14 +4,15 @@ use core::marker::PhantomData;
 
 use digest::{Digest, FixedOutputReset, OutputSizeUser};
 use jose_b64::serde::{Bytes, Secret};
+use jose_b64::stream::Update;
+use rsa::signature::SignatureEncoding;
+use rsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pss};
 use sha2::{Sha256, Sha384, Sha512};
-use signature::SignatureEncoding;
-use signature::hazmat::{PrehashSigner, PrehashVerifier};
 
 use crate::Signing;
-use crate::crypto::{CipherError, Signer, SigningKey, Update, Verifier, VerifyingKey};
+use crate::crypto::{CipherError, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// PS256 (RSA-PSS + SHA-256) signing key
 pub type Ps256SigningKey = RsaPssSigningKey<Sha256>;
@@ -133,9 +134,10 @@ where
         = RsaPssSigner<'a, D>
     where
         Self: 'a;
-    type Error = CipherError;
+    type SignError = CipherError;
+    type VerifyingKey = RsaPssVerifyingKey<D>;
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::Error> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
         Ok(RsaPssSigner {
             digest: D::new(),
             key: &self.key,
@@ -143,10 +145,17 @@ where
         })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::Error> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
         signer.update(data).map_err(|_| CipherError::Sign)?;
         signer.finish()
+    }
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        RsaPssVerifyingKey {
+            key: self.key.to_public_key(),
+            _digest: PhantomData,
+        }
     }
 }
 
@@ -249,6 +258,24 @@ where
     }
 }
 
+impl<D> From<RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
+where
+    D: Digest + FixedOutputReset,
+{
+    fn from(key: RsaPssSigningKey<D>) -> Self {
+        key.verifying_key()
+    }
+}
+
+impl<D> From<&RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
+where
+    D: Digest + FixedOutputReset,
+{
+    fn from(key: &RsaPssSigningKey<D>) -> Self {
+        key.verifying_key()
+    }
+}
+
 /// RSA-PSS signing state.
 pub struct RsaPssSigner<'a, D> {
     digest: D,
@@ -272,9 +299,9 @@ impl<'a, D> Signer for RsaPssSigner<'a, D>
 where
     D: Digest + FixedOutputReset,
 {
-    type Error = CipherError;
+    type SignError = CipherError;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::Error> {
+    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize().to_vec();
 
         let key = pss::SigningKey::<D>::from(self.key.clone());
@@ -307,9 +334,9 @@ impl<D> Verifier for RsaPssVerifier<D>
 where
     D: Digest + FixedOutputReset,
 {
-    type Error = CipherError;
+    type VerifyError = CipherError;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::Error> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 

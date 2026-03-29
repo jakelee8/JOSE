@@ -12,10 +12,10 @@
 
 use alloc::vec;
 
-use aes::Aes192;
-use aes::cipher::{Key, KeyInit};
 use aes_gcm::aead::inout::InOutBuf;
+use aes_gcm::aes::Aes192;
 use aes_gcm::{AeadCore, AeadInOut, Aes128Gcm, Aes256Gcm, AesGcm, Nonce};
+use aes_gcm::{Key, KeyInit};
 use digest::consts::U12;
 use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
