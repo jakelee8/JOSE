@@ -8,16 +8,19 @@
 
 #![cfg(any(feature = "aes-cbc-hmac", feature = "aes-gcm"))]
 
-#[cfg(feature = "aes-cbc-hmac")]
-pub mod aes_cbc_hmac;
-#[cfg(feature = "aes-gcm")]
-pub mod aes_gcm;
+mod aes_cbc_hmac;
+mod aes_gcm;
 
 use core::error::Error;
-use jose_b64::serde::{Bytes, Secret};
 
+use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use zeroize::Zeroize;
+
+#[cfg(feature = "aes-cbc-hmac")]
+pub use self::aes_cbc_hmac::*;
+#[cfg(feature = "aes-gcm")]
+pub use self::aes_gcm::*;
 
 use super::CipherError;
 

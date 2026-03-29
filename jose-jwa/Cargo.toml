@@ -66,7 +66,7 @@ pbkdf2 = { workspace = true, default-features = false, optional = true, features
 subtle = { workspace = true, default-features = false, optional = true }
 
 [dev-dependencies]
-getrandom = { workspace = true }
+getrandom = { workspace = true, features = ["sys_rng"] }
 serde_json = { workspace = true }
 
 [package.metadata.docs.rs]

@@ -69,6 +69,7 @@ where
         Ok(key.into())
     }
 
+    /// Return the key bytes (JWK `k` parameter).
     pub fn k(&self) -> &Secret {
         &self.k
     }

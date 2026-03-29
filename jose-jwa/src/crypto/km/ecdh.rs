@@ -11,24 +11,40 @@
 //! // Sender: generate ephemeral key, derive CEK
 //! let recipient_public = EcdhPublicKey::<p256::NistP256>::from_components(&x, &y)?;
 //! let ephemeral = EcdhSecretKey::<p256::NistP256>::random(rng)?;
-//! let cek = ephemeral.derive(&recipient_public, 128, b"A128GCM", Some(&apu), Some(&apv));
+//! let cek = ephemeral.derive(&recipient_public, &EcdhDeriveParams {
+//!     algorithm: EcdhDerivation::A128Gcm,
+//!     apu: &apu,
+//!     apv: &apv,
+//! });
 //! // Serialize ephemeral.public_key() to JWE header as 'epk'
 //!
 //! // Recipient: use static key, derive same CEK
 //! let static_key = EcdhSecretKey::<p256::NistP256>::from_bytes(&d)?;
 //! let sender_epk = EcdhPublicKey::from_components(&epk_x, &epk_y)?;
-//! let cek = static_key.derive(&sender_epk, 128, b"A128GCM", Some(&apu), Some(&apv));
+//! let cek = static_key.derive(&sender_epk, &EcdhDeriveParams {
+//!     algorithm: EcdhDerivation::A128Gcm,
+//!     apu: &apu,
+//!     apv: &apv,
+//! });
 //! ```
 //!
 //! ## ECDH-ES with Key Wrap (e.g., ECDH-ES+A128KW)
 //!
 //! ```rust,ignore
 //! // Sender: derive KEK, wrap CEK with AES-KW
-//! let kek = ephemeral.derive(&recipient_public, 128, b"ECDH-ES+A128KW", Some(&apu), Some(&apv));
+//! let kek = ephemeral.derive(&recipient_public, &EcdhDeriveParams {
+//!     algorithm: EcdhDerivation::EcdhEsA128Kw,
+//!     apu: &apu,
+//!     apv: &apv,
+//! });
 //! let wrapped_cek = AesKwKey128::try_from(kek)?.wrap(rng, &cek)?;
 //!
 //! // Recipient: derive same KEK, unwrap CEK
-//! let kek = static_key.derive(&sender_epk, 128, b"ECDH-ES+A128KW", Some(&apu), Some(&apv));
+//! let kek = static_key.derive(&sender_epk, &EcdhDeriveParams {
+//!     algorithm: EcdhDerivation::EcdhEsA128Kw,
+//!     apu: &apu,
+//!     apv: &apv,
+//! });
 //! let cek = AesKwKey128::try_from(kek)?.unwrap(&wrapped_cek)?;
 //! ```
 
@@ -60,6 +76,80 @@ pub enum EcCurves {
     P384,
     /// P-521 curve
     P521,
+}
+
+/// Algorithm context for ECDH key derivation via concat KDF (RFC 7518 §4.6.2).
+///
+/// Each variant encodes the `algorithm_id` string and `keydatalen` (in bits)
+/// for the concat KDF. Select the variant that matches the JWE header:
+///
+/// - For `alg="ECDH-ES"` (direct): choose the variant matching the `enc` value.
+/// - For `alg="ECDH-ES+A*KW"` (key wrap): choose the variant matching the `alg` value.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EcdhDerivation {
+    // Direct ECDH-ES: algorithm_id = enc value, keydatalen = enc algorithm key length
+    /// A128CBC-HS256 content encryption (256-bit key)
+    A128CbcHs256,
+    /// A192CBC-HS384 content encryption (384-bit key)
+    A192CbcHs384,
+    /// A256CBC-HS512 content encryption (512-bit key)
+    A256CbcHs512,
+    /// A128GCM content encryption (128-bit key)
+    A128Gcm,
+    /// A192GCM content encryption (192-bit key)
+    A192Gcm,
+    /// A256GCM content encryption (256-bit key)
+    A256Gcm,
+    // Key-wrap ECDH-ES+A*KW: algorithm_id = alg value, keydatalen = KW key length
+    /// ECDH-ES+A128KW key wrap (128-bit key)
+    EcdhEsA128Kw,
+    /// ECDH-ES+A192KW key wrap (192-bit key)
+    EcdhEsA192Kw,
+    /// ECDH-ES+A256KW key wrap (256-bit key)
+    EcdhEsA256Kw,
+}
+
+impl EcdhDerivation {
+    /// The `algorithm_id` bytes passed to the concat KDF.
+    fn algorithm_id(self) -> &'static [u8] {
+        match self {
+            Self::A128CbcHs256 => b"A128CBC-HS256",
+            Self::A192CbcHs384 => b"A192CBC-HS384",
+            Self::A256CbcHs512 => b"A256CBC-HS512",
+            Self::A128Gcm => b"A128GCM",
+            Self::A192Gcm => b"A192GCM",
+            Self::A256Gcm => b"A256GCM",
+            Self::EcdhEsA128Kw => b"ECDH-ES+A128KW",
+            Self::EcdhEsA192Kw => b"ECDH-ES+A192KW",
+            Self::EcdhEsA256Kw => b"ECDH-ES+A256KW",
+        }
+    }
+
+    /// The `keydatalen` in bits passed to the concat KDF.
+    fn keydatalen(self) -> usize {
+        match self {
+            Self::A128CbcHs256 => 256,
+            Self::A192CbcHs384 => 384,
+            Self::A256CbcHs512 => 512,
+            Self::A128Gcm | Self::EcdhEsA128Kw => 128,
+            Self::A192Gcm | Self::EcdhEsA192Kw => 192,
+            Self::A256Gcm | Self::EcdhEsA256Kw => 256,
+        }
+    }
+}
+
+/// Parameters for ECDH key derivation via concat KDF.
+///
+/// Pass to [`EcdhSecretKey::derive`]. Empty slices for `apu`/`apv` are
+/// equivalent to absent (RFC 7518 §4.6.2).
+pub struct EcdhDeriveParams {
+    /// Derivation algorithm — determines `algorithm_id` and `keydatalen`.
+    pub algorithm: EcdhDerivation,
+    /// Agreement PartyUInfo (JWE `apu` header, base64url-decoded).
+    pub apu: Option<Bytes>,
+    /// Agreement PartyVInfo (JWE `apv` header, base64url-decoded).
+    pub apv: Option<Bytes>,
 }
 
 /// ECDH public key.
@@ -230,19 +320,17 @@ where
 
     /// Derive a key from ECDH key agreement and the concat KDF (RFC 7518 Section 4.6.2).
     ///
-    /// Performs DH with `other`, then runs the result through the concat KDF to produce
-    /// `keydatalen` bits of key material. Pass the JWE `alg` value as `algorithm_id`
-    /// (e.g. `b"A128GCM"` for direct or `b"ECDH-ES+A128KW"` for key wrap).
-    pub fn derive(
-        &self,
-        other: &EcdhPublicKey<C>,
-        keydatalen: usize,
-        algorithm_id: impl AsRef<[u8]>,
-        apu: Option<impl AsRef<[u8]>>,
-        apv: Option<impl AsRef<[u8]>>,
-    ) -> Secret {
+    /// Performs DH with `other`, then runs the result through the concat KDF. The
+    /// `algorithm_id` and `keydatalen` are determined by `params.algorithm`.
+    pub fn derive(&self, other: &EcdhPublicKey<C>, params: &EcdhDeriveParams) -> Secret {
         let z = self.agree(other);
-        concat_kdf(z.raw_secret_bytes(), keydatalen, algorithm_id, apu, apv)
+        concat_kdf(
+            z.raw_secret_bytes(),
+            params.algorithm.keydatalen(),
+            params.algorithm.algorithm_id(),
+            params.apu.as_ref(),
+            params.apv.as_ref(),
+        )
     }
 
     fn agree(&self, other: &EcdhPublicKey<C>) -> SharedSecret<C> {
@@ -632,5 +720,99 @@ mod tests {
         let cek_empty = concat_kdf(&z, 128, b"A128GCM", None::<&[u8]>, None::<&[u8]>);
         let cek_explicit = concat_kdf(&z, 128, b"A128GCM", Some(&[]), Some(&[]));
         assert_eq!(cek_empty.as_ref(), cek_explicit.as_ref());
+    }
+
+    /// End-to-end ECDH-ES direct: both sides derive the same CEK.
+    /// Uses RFC 7518 Appendix C test vectors and verifies against the expected CEK.
+    #[test]
+    fn ecdh_es_direct_derive_cek() {
+        let alice_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+        let bob_d: [u8; 32] = [
+            0x54, 0x49, 0x83, 0x66, 0x90, 0xd7, 0x5c, 0xaf, 0x29, 0xf0, 0xdd, 0x02, 0x9d, 0xdb,
+            0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
+            0x17, 0xd4, 0xa9, 0xdc,
+        ];
+        // Expected CEK from RFC 7518 Appendix C
+        let expected_cek: [u8; 16] = [
+            0x56, 0xaa, 0x8d, 0xea, 0xf8, 0x23, 0x6d, 0x20, 0x5c, 0x22, 0x28, 0xcd, 0x71, 0xa7,
+            0x10, 0x1a,
+        ];
+
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&bob_d).unwrap();
+
+        let params = EcdhDeriveParams {
+            algorithm: EcdhDerivation::A128Gcm,
+            apu: Some(b"Alice".to_vec().into()),
+            apv: Some(b"Bob".to_vec().into()),
+        };
+
+        let cek_alice = alice_secret.derive(&bob_secret.public_key(), &params);
+        let cek_bob = bob_secret.derive(&alice_secret.public_key(), &params);
+
+        assert_eq!(
+            cek_alice.as_ref(),
+            expected_cek,
+            "Alice's CEK does not match RFC 7518"
+        );
+        assert_eq!(
+            cek_bob.as_ref(),
+            expected_cek,
+            "Bob's CEK does not match RFC 7518"
+        );
+        assert_eq!(
+            cek_alice.as_ref(),
+            cek_bob.as_ref(),
+            "Both sides must derive the same CEK"
+        );
+    }
+
+    /// End-to-end ECDH-ES+A128KW: sender wraps a CEK, recipient unwraps it.
+    #[cfg(feature = "aes-kw")]
+    #[test]
+    fn ecdh_es_a128kw_wrap_unwrap() {
+        use super::super::{AesKwKey128, UnwrappingKey, WrappingKey};
+
+        let alice_d: [u8; 32] = [
+            0xd3, 0xf3, 0x71, 0x69, 0x13, 0xd4, 0x31, 0x0a, 0x00, 0x26, 0xde, 0x74, 0x1b, 0x3f,
+            0x18, 0x89, 0x3a, 0xfc, 0x81, 0x14, 0xf0, 0xc8, 0x46, 0x82, 0xba, 0x67, 0x7e, 0x31,
+            0x3a, 0x13, 0x98, 0x8a,
+        ];
+        let bob_d: [u8; 32] = [
+            0x54, 0x49, 0x83, 0x66, 0x90, 0xd7, 0x5c, 0xaf, 0x29, 0xf0, 0xdd, 0x02, 0x9d, 0xdb,
+            0x31, 0xb3, 0xdd, 0xb8, 0xab, 0xa9, 0xd2, 0xd5, 0x15, 0xc5, 0x01, 0x24, 0x65, 0xe8,
+            0x17, 0xd4, 0xa9, 0xdc,
+        ];
+        let original_cek = [0xabu8; 16]; // fixed CEK to be wrapped
+
+        let alice_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&alice_d).unwrap();
+        let bob_secret = EcdhSecretKey::<p256::NistP256>::from_bytes(&bob_d).unwrap();
+
+        let params = EcdhDeriveParams {
+            algorithm: EcdhDerivation::EcdhEsA128Kw,
+            apu: None,
+            apv: None,
+        };
+
+        // Sender: derive KEK and wrap the CEK
+        let kek_sender = alice_secret.derive(&bob_secret.public_key(), &params);
+        let mut rng = getrandom::SysRng;
+        let wrapped = AesKwKey128::try_from(kek_sender)
+            .unwrap()
+            .wrap(&mut rng, original_cek)
+            .unwrap();
+
+        // Recipient: derive the same KEK and unwrap
+        let kek_recipient = bob_secret.derive(&alice_secret.public_key(), &params);
+        let unwrapped = AesKwKey128::try_from(kek_recipient)
+            .unwrap()
+            .unwrap(&wrapped)
+            .unwrap();
+
+        assert_eq!(unwrapped.as_ref(), original_cek);
     }
 }
