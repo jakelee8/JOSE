@@ -132,7 +132,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| Error::Sign)?;
+        signer.update(data).expect("infallible");
         signer.finish()
     }
 
@@ -168,7 +168,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| Error::Verify)?;
+        verifier.update(data).expect("infallible");
         verifier.finish(signature)
     }
 }
@@ -281,8 +281,7 @@ where
     fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
         let hash = self.digest.finalize().to_vec();
 
-        let key =
-            pkcs1v15::SigningKey::<D>::try_from(self.key.clone()).map_err(|_| Error::InvalidKey)?;
+        let key = pkcs1v15::SigningKey::<D>::from(self.key.clone());
         let sig = key.sign_prehash(&hash).map_err(|_| Error::Sign)?;
 
         Ok(sig.to_bytes().as_ref().to_vec().into())
@@ -318,7 +317,7 @@ where
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 
-        let key = pkcs1v15::VerifyingKey::<D>::try_from(self.key).map_err(|_| Error::InvalidKey)?;
+        let key = pkcs1v15::VerifyingKey::<D>::from(self.key);
         let sig = pkcs1v15::Signature::try_from(sig).map_err(|_| Error::InvalidKey)?;
 
         key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)

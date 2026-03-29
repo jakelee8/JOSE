@@ -81,7 +81,7 @@ impl<D> RsaOaepPrivateKey<D> {
 
     /// Generate a random RSA private key with a specific key size (in bytes).
     pub fn random_with_key_size(rng: &mut impl CryptoRng, key_size: usize) -> Result<Self, Error> {
-        if key_size < RSA_MIN_KEY_SIZE || key_size > RSA_MAX_KEY_SIZE {
+        if !(RSA_MIN_KEY_SIZE..=RSA_MAX_KEY_SIZE).contains(&key_size) {
             return Err(Error::InvalidKey);
         }
         RsaPrivateKey::new(rng, key_size * 8)
@@ -108,7 +108,7 @@ impl<D> RsaOaepPrivateKey<D> {
     pub fn p(&self) -> Option<Bytes> {
         self.key
             .primes()
-            .get(0)
+            .first()
             .map(|p| p.to_be_bytes_trimmed_vartime().into())
     }
 

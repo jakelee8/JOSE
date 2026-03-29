@@ -147,7 +147,7 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| Error::Sign)?;
+        signer.update(data).expect("infallible");
         signer.finish()
     }
 
@@ -183,7 +183,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| Error::Verify)?;
+        verifier.update(data).expect("infallible");
         verifier.finish(signature)
     }
 }
@@ -253,7 +253,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| Error::Verify)?;
+        verifier.update(data).expect("infallible");
         verifier.finish(signature)
     }
 }

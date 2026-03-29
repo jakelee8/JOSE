@@ -219,7 +219,7 @@ where
         let encoded = self.inner.to_sec1_point(false);
         encoded
             .x()
-            .expect("uncompressed point has x")
+            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has x"))
             .as_slice()
             .to_vec()
             .into()
@@ -230,7 +230,7 @@ where
         let encoded = self.inner.to_sec1_point(false);
         encoded
             .y()
-            .expect("uncompressed point has y")
+            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has y"))
             .as_slice()
             .to_vec()
             .into()
@@ -262,7 +262,8 @@ where
 ///
 /// # Security
 ///
-/// The secret key material is automatically zeroized when this type is dropped.
+/// The secret key material is automatically zeroized when this type is dropped
+/// (the inner `SecretKey` type implements `ZeroizeOnDrop`).
 /// This type does not implement `Clone` or `Copy` to prevent accidental key duplication.
 pub struct EcdhSecretKey<C: Curve> {
     inner: SecretKey<C>,
@@ -372,7 +373,7 @@ where
         32 => EcCurves::P256,
         48 => EcCurves::P384,
         66 => EcCurves::P521,
-        _ => panic!("unsupported curve with field size {}", field_size),
+        _ => unreachable!("unsupported curve with field size {}", field_size),
     }
 }
 
@@ -407,21 +408,21 @@ fn concat_kdf(
     let apv = apv.as_ref().map(|s| s.as_ref()).unwrap_or(&[]);
     let apv_len = (apv.len() as u32).to_be_bytes();
 
-    let mut derived = vec![0u8; (keydatalen + 7) / 8];
+    let mut derived = vec![0u8; keydatalen.div_ceil(8)];
     let mut hasher = Sha256::new();
 
     let mut i = 1u32;
     for chunk in derived.chunks_mut(<Sha256 as OutputSizeUser>::OutputSize::USIZE) {
-        hasher.update(&(i as u32).to_be_bytes());
+        hasher.update(i.to_be_bytes());
         hasher.update(z);
-        hasher.update(&algorithm_id_len);
+        hasher.update(algorithm_id_len);
         hasher.update(algorithm_id);
-        hasher.update(&apu_len);
+        hasher.update(apu_len);
         hasher.update(apu);
-        hasher.update(&apv_len);
+        hasher.update(apv_len);
         hasher.update(apv);
         // SuppPubInfo: keydatalen in bits as a 4-byte big-endian value
-        hasher.update(&(keydatalen as u32).to_be_bytes());
+        hasher.update((keydatalen as u32).to_be_bytes());
 
         chunk.copy_from_slice(&hasher.finalize_reset()[..chunk.len()]);
 

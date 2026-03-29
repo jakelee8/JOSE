@@ -159,7 +159,7 @@ where
         tag: impl AsRef<[u8]>,
         iv: impl AsRef<[u8]>,
     ) -> Result<Secret, Self::Error> {
-        aes_cbc_hmac_decrypt::<A, D>(self.k.as_ref(), ciphertext, aad, tag, iv).map(Secret::from)
+        aes_cbc_hmac_decrypt::<A, D>(self.k.as_ref(), ciphertext, aad, tag, iv)
     }
 }
 
@@ -240,7 +240,7 @@ where
     let computed_tag = &m.as_bytes()[..tag_len];
 
     // Verify tag in constant time
-    if computed_tag.ct_ne(&tag).into() {
+    if computed_tag.ct_ne(tag).into() {
         return Err(Error::Decryption);
     }
 

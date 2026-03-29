@@ -104,13 +104,13 @@ impl Pbes2Config for ConfigHs512A256 {
 ///
 /// # Example
 /// ```
-/// use jose_jwa::{Pbes2Hs256A128Key, WrappingKey, UnwrappingKey, WrappedKey};
+/// use jose_jwa::crypto::{Pbes2Hs256A128Key, WrappingKey, UnwrappingKey};
 ///
 /// // Create a PBES2 key with password and iteration count
 /// let password = b"my-secret-password";
 /// let pbes2_key = Pbes2Hs256A128Key::new(password, 1000);
 ///
-/// // Wrap a CEK
+/// // Wrap a CEK (requires a RNG)
 /// // let wrapped = pbes2_key.wrap(&mut rng, cek).unwrap();
 ///
 /// // Unwrap (iteration count is stored in the key)

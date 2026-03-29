@@ -9,7 +9,6 @@
 use core::marker::PhantomData;
 
 use alloc::vec;
-use alloc::vec::Vec;
 
 use aes::cipher::{InOutBuf, KeyInit};
 use aes_gcm::{AeadInOut, AesGcm, KeySizeUser, Nonce};
@@ -100,8 +99,7 @@ where
         let cipher = AesGcm::<A, U12>::new_from_slice(self.k.as_ref())?;
         let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| Error::InvalidIvLength)?;
 
-        let mut ciphertext = Vec::new();
-        ciphertext.resize(plaintext.as_ref().len(), 0);
+        let mut ciphertext = vec![0u8; plaintext.as_ref().len()];
         let inout =
             InOutBuf::new(plaintext.as_ref(), &mut ciphertext).map_err(|_| Error::Encryption)?;
 
@@ -135,8 +133,7 @@ where
         let nonce = Nonce::try_from(iv.as_ref()).map_err(|_| Error::InvalidIvLength)?;
 
         let ciphertext = ciphertext.as_ref();
-        let mut plaintext = Vec::new();
-        plaintext.resize(ciphertext.len(), 0);
+        let mut plaintext = vec![0u8; ciphertext.len()];
         let inout = InOutBuf::new(ciphertext, &mut plaintext).map_err(|_| Error::Decryption)?;
 
         let tag = tag.as_ref().try_into().map_err(|_| Error::Decryption)?;

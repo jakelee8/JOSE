@@ -74,7 +74,7 @@ pub enum Signing {
 
 impl Signing {
     /// Returns the string representation of this signing algorithm.
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             Self::EdDsa => "EdDSA",
             Self::Ed25519 => "Ed25519",

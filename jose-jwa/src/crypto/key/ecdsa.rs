@@ -121,7 +121,7 @@ where
     /// Get the corresponding verifying key.
     pub fn verifying_key(&self) -> EcdsaVerifyingKey<C> {
         EcdsaVerifyingKey {
-            key: self.key.verifying_key().clone(),
+            key: *self.key.verifying_key(),
         }
     }
 }
@@ -148,13 +148,13 @@ where
 
     fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
         let mut signer = self.signer()?;
-        signer.update(data).map_err(|_| Error::Sign)?;
+        signer.update(data).expect("infallible");
         signer.finish()
     }
 
     fn verifying_key(&self) -> Self::VerifyingKey {
         EcdsaVerifyingKey {
-            key: self.key.verifying_key().clone(),
+            key: *self.key.verifying_key(),
         }
     }
 }
@@ -183,7 +183,7 @@ where
         signature: impl AsRef<[u8]>,
     ) -> Result<(), Self::Error> {
         let mut verifier = self.verifier()?;
-        verifier.update(data).map_err(|_| Error::Verify)?;
+        verifier.update(data).expect("infallible");
         verifier.finish(signature)
     }
 }
@@ -279,7 +279,7 @@ where
         let point = self.key.to_sec1_point(false);
         point
             .x()
-            .expect("uncompressed point")
+            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has x"))
             .as_slice()
             .to_vec()
             .into()
@@ -290,7 +290,7 @@ where
         let point = self.key.to_sec1_point(false);
         point
             .y()
-            .expect("uncompressed point")
+            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has y"))
             .as_slice()
             .to_vec()
             .into()
