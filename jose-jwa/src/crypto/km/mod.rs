@@ -16,6 +16,7 @@ mod pbes2;
 mod rsa_oaep;
 
 use core::fmt;
+use core::str::FromStr;
 
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
@@ -155,6 +156,35 @@ impl KeyManagement {
 impl fmt::Display for KeyManagement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for KeyManagement {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            #[cfg(feature = "legacy-rsa1_5")]
+            #[allow(deprecated)]
+            "RSA1_5" => Ok(Self::Rsa1_5),
+            "RSA-OAEP" => Ok(Self::RsaOaep),
+            "RSA-OAEP-256" => Ok(Self::RsaOaep256),
+            "A128KW" => Ok(Self::A128Kw),
+            "A192KW" => Ok(Self::A192Kw),
+            "A256KW" => Ok(Self::A256Kw),
+            "dir" => Ok(Self::Dir),
+            "ECDH-ES" => Ok(Self::EcdhEs),
+            "ECDH-ES+A128KW" => Ok(Self::EcdhEsA128Kw),
+            "ECDH-ES+A192KW" => Ok(Self::EcdhEsA192Kw),
+            "ECDH-ES+A256KW" => Ok(Self::EcdhEsA256Kw),
+            "A128GCMKW" => Ok(Self::A128GcmKw),
+            "A192GCMKW" => Ok(Self::A192GcmKw),
+            "A256GCMKW" => Ok(Self::A256GcmKw),
+            "PBES2-HS256+A128KW" => Ok(Self::Pbes2Hs256A128Kw),
+            "PBES2-HS384+A192KW" => Ok(Self::Pbes2Hs384A192Kw),
+            "PBES2-HS512+A256KW" => Ok(Self::Pbes2Hs512A256Kw),
+            _ => Err(crate::Error::UnsupportedAlgorithm),
+        }
     }
 }
 

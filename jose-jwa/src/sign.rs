@@ -4,6 +4,7 @@
 //! Signing algorithms for JWS (RFC 7518 Section 3.1)
 
 use core::fmt;
+use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -70,6 +71,33 @@ pub enum Signing {
     /// No digital signature or MAC performed (Optional)
     #[serde(rename = "none")]
     None,
+}
+
+impl FromStr for Signing {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "EdDSA" => Ok(Self::EdDsa),
+            "Ed25519" => Ok(Self::Ed25519),
+            "Ed448" => Ok(Self::Ed448),
+            "ES256" => Ok(Self::Es256),
+            "ES256K" => Ok(Self::Es256K),
+            "ES384" => Ok(Self::Es384),
+            "ES512" => Ok(Self::Es512),
+            "HS256" => Ok(Self::Hs256),
+            "HS384" => Ok(Self::Hs384),
+            "HS512" => Ok(Self::Hs512),
+            "PS256" => Ok(Self::Ps256),
+            "PS384" => Ok(Self::Ps384),
+            "PS512" => Ok(Self::Ps512),
+            "RS256" => Ok(Self::Rs256),
+            "RS384" => Ok(Self::Rs384),
+            "RS512" => Ok(Self::Rs512),
+            "none" => Ok(Self::None),
+            _ => Err(crate::Error::UnsupportedAlgorithm),
+        }
+    }
 }
 
 impl Signing {

@@ -7,6 +7,7 @@
 //! appear in the JWE "enc" header, not in JWK "alg" parameter.
 
 use core::fmt;
+use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -62,6 +63,22 @@ impl Encryption {
 impl fmt::Display for Encryption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Encryption {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "A128CBC-HS256" => Ok(Self::A128CbcHs256),
+            "A192CBC-HS384" => Ok(Self::A192CbcHs384),
+            "A256CBC-HS512" => Ok(Self::A256CbcHs512),
+            "A128GCM" => Ok(Self::A128Gcm),
+            "A192GCM" => Ok(Self::A192Gcm),
+            "A256GCM" => Ok(Self::A256Gcm),
+            _ => Err(crate::Error::UnsupportedAlgorithm),
+        }
     }
 }
 

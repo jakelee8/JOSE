@@ -68,5 +68,6 @@ pub trait Verifier: Update {
     ///
     /// Consumes the verifier and returns `Ok(())` if the signature is valid,
     /// or an error if verification fails.
+    #[must_use = "the result of verification should be checked to determine if the signature is valid"]
     fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::VerifyError>;
 }

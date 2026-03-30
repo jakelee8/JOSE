@@ -6,7 +6,7 @@
 use core::fmt;
 
 /// Unified error type for cryptographic operations (content encryption and key management).
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// An error occurred during encryption.
     Encryption,

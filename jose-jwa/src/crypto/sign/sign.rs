@@ -67,5 +67,6 @@ pub trait Signer: Update {
     /// Finish processing payload and create the signature.
     ///
     /// Consumes the signer and returns the signature bytes.
+    #[must_use = "the returned signature should be used (e.g., stored or transmitted)"]
     fn finish(self) -> Result<Bytes, Self::SignError>;
 }

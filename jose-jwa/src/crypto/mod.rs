@@ -7,9 +7,9 @@
 //! - Cryptographic traits for algorithm abstraction
 
 mod enc;
-mod key;
 mod km;
+mod sign;
 
 pub use self::enc::*;
-pub use self::key::*;
 pub use self::km::*;
+pub use self::sign::*;
