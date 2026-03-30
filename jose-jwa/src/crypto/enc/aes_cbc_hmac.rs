@@ -4,7 +4,8 @@ use core::marker::PhantomData;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::{
-    BlockCipherDecrypt, BlockCipherEncrypt, BlockModeEncrypt, Iv, KeyIvInit, KeySizeUser,
+    BlockCipherDecrypt, BlockCipherEncrypt, BlockModeDecrypt, BlockModeEncrypt, Iv, KeyIvInit,
+    KeySizeUser,
 };
 use aes::{Aes128, Aes192, Aes256};
 use hmac::{EagerHash, Hmac, KeyInit, Mac};
@@ -14,7 +15,8 @@ use sha2::{Digest, Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::Encrypted;
-use crate::crypto::{DecryptingKey, EncryptingKey};
+use crate::crypto::EncryptionKey;
+use crate::crypto::private::EncryptionAlgorithm;
 use crate::{Encryption, Error};
 
 /// Type alias for A128CBC-HS256 keys (AES-128 with SHA-256).
@@ -25,24 +27,6 @@ pub type Aes192CbcHmacSha384Key = AesCbcHmacKey<Aes192, Sha384>;
 
 /// Type alias for A256CBC-HS512 keys (AES-256 with SHA-512).
 pub type Aes256CbcHmacSha512Key = AesCbcHmacKey<Aes256, Sha512>;
-
-/// Private trait for compile-time AES-CBC-HMAC algorithm mapping.
-pub trait AesCbcHmacAlgorithm {
-    /// The content encryption algorithm identifier.
-    const ENC: Encryption;
-}
-
-impl AesCbcHmacAlgorithm for (Aes128, Sha256) {
-    const ENC: Encryption = Encryption::A128CbcHs256;
-}
-
-impl AesCbcHmacAlgorithm for (Aes192, Sha384) {
-    const ENC: Encryption = Encryption::A192CbcHs384;
-}
-
-impl AesCbcHmacAlgorithm for (Aes256, Sha512) {
-    const ENC: Encryption = Encryption::A256CbcHs512;
-}
 
 /// An AES-CBC with HMAC-SHA2 content encryption key.
 ///
@@ -61,6 +45,7 @@ impl<A, D> AesCbcHmacKey<A, D>
 where
     A: KeySizeUser,
     D: EagerHash,
+    Self: EncryptionAlgorithm,
 {
     /// Create an AES-CBC-HMAC key from raw bytes.
     ///
@@ -85,32 +70,25 @@ where
         rng.try_fill_bytes(&mut k).map_err(|_| Error::Rng)?;
         Self::from_bytes(k)
     }
-
-    /// Get the content encryption algorithm.
-    pub fn enc(&self) -> Encryption
-    where
-        (A, D): AesCbcHmacAlgorithm,
-    {
-        <(A, D)>::ENC
-    }
-
-    /// Return the key bytes (JWK `k` parameter).
-    pub fn k(&self) -> &Secret {
-        &self.k
-    }
 }
 
-impl<A, D> EncryptingKey for AesCbcHmacKey<A, D>
+impl<A, D> EncryptionKey for AesCbcHmacKey<A, D>
 where
-    A: BlockCipherEncrypt + KeyInit + KeySizeUser,
+    A: BlockCipherEncrypt + BlockCipherDecrypt + KeyInit,
     D: EagerHash + Digest,
     Hmac<D>: Mac + KeyInit,
-    (A, D): AesCbcHmacAlgorithm,
+    Self: EncryptionAlgorithm,
 {
     type Error = Error;
 
+    /// Get the content encryption algorithm.
     fn enc(&self) -> Encryption {
-        self.enc()
+        Self::ENC
+    }
+
+    /// Return the key bytes (JWK `k` parameter).
+    fn k(&self) -> &Secret {
+        &self.k
     }
 
     fn encrypt(
@@ -155,15 +133,6 @@ where
             tag: tag.into(),
         })
     }
-}
-
-impl<A, D> DecryptingKey for AesCbcHmacKey<A, D>
-where
-    A: BlockCipherDecrypt + KeyInit,
-    D: EagerHash,
-    Hmac<D>: Mac + KeyInit,
-{
-    type Error = Error;
 
     fn decrypt(
         &self,
@@ -172,98 +141,70 @@ where
         tag: impl AsRef<[u8]>,
         iv: impl AsRef<[u8]>,
     ) -> Result<Secret, Self::Error> {
-        aes_cbc_hmac_decrypt::<A, D>(self.k.as_ref(), ciphertext, aad, tag, iv)
+        // MAC_KEY = initial MAC_KEY_LEN octets of K
+        let mac_key_len = A::key_size();
+        // ENC_KEY = final ENC_KEY_LEN octets of K
+        let enc_key_len = mac_key_len;
+
+        let key = self.k.as_ref();
+        if key.len() != mac_key_len + enc_key_len {
+            return Err(Error::InvalidKeyLength);
+        }
+
+        let mac_key = &key[..mac_key_len];
+        let enc_key = &key[mac_key_len..];
+
+        let iv = iv.as_ref();
+        if iv.len() != 16 {
+            return Err(Error::InvalidIvLength);
+        }
+
+        let ciphertext = ciphertext.as_ref();
+        let tag = tag.as_ref();
+        let tag_len = mac_key_len;
+
+        if tag.len() != tag_len {
+            return Err(Error::Decryption);
+        }
+
+        let al: u64 = (aad.as_ref().len() as u64) * 8;
+
+        // M = MAC(MAC_KEY, A || IV || E || AL),
+        let mut hmac = Hmac::<D>::new_from_slice(mac_key)?;
+        hmac.update(aad.as_ref());
+        hmac.update(iv);
+        hmac.update(ciphertext);
+        hmac.update(&al.to_be_bytes());
+        let m = hmac.finalize();
+
+        // T = initial T_LEN octets of M.
+        let computed_tag = &m.as_bytes()[..tag_len];
+
+        // Verify tag in constant time
+        if computed_tag.ct_ne(tag).into() {
+            return Err(Error::Decryption);
+        }
+
+        // P = CBC-PKCS7-DEC(ENC_KEY, E),
+        let decryptor = cbc::Decryptor::<A>::new_from_slices(enc_key, iv)?;
+        let plaintext = decryptor
+            .decrypt_padded_vec::<Pkcs7>(ciphertext)
+            .map_err(|_| Error::Decryption)?;
+
+        Ok(plaintext.into())
     }
 }
 
-/// Decrypts ciphertext using AES-CBC with HMAC-SHA2 composite decryption.
-///
-/// # Type Parameters
-///
-/// * `Aes` - The AES variant (e.g., `Aes128`, `Aes192`, `Aes256`)
-/// * `D` - The hash digest algorithm for HMAC (e.g., `Sha256`, `Sha384`, `Sha512`)
-///
-/// # Arguments
-///
-/// * `key` - The composite key (must be twice the AES key size: first half for MAC, second half for encryption)
-/// * `ciphertext` - The ciphertext to decrypt
-/// * `aad` - The additional authenticated data used during encryption
-/// * `tag` - The authentication tag for integrity verification
-/// * `iv` - The initialization vector used during encryption
-///
-/// # Returns
-///
-/// Returns `Ok(Vec<u8>)` containing the decrypted plaintext.
-///
-/// # Errors
-///
-/// Returns `CipherError::Decryption` if authentication tag verification fails.
-pub fn aes_cbc_hmac_decrypt<Aes, D>(
-    key: impl AsRef<[u8]>,
-    ciphertext: impl AsRef<[u8]>,
-    aad: impl AsRef<[u8]>,
-    tag: impl AsRef<[u8]>,
-    iv: impl AsRef<[u8]>,
-) -> Result<Secret, Error>
-where
-    Aes: KeyInit + KeySizeUser + BlockCipherDecrypt,
-    cbc::Decryptor<Aes>: KeyIvInit,
-    D: Digest + EagerHash,
-    Hmac<D>: Mac,
-{
-    use aes::cipher::BlockModeDecrypt;
+impl EncryptionAlgorithm for AesCbcHmacKey<Aes128, Sha256> {
+    const ENC: Encryption = Encryption::A128CbcHs256;
+}
 
-    // MAC_KEY = initial MAC_KEY_LEN octets of K
-    let mac_key_len = Aes::key_size();
-    // ENC_KEY = final ENC_KEY_LEN octets of K
-    let enc_key_len = mac_key_len;
+impl EncryptionAlgorithm for AesCbcHmacKey<Aes192, Sha384> {
+    const ENC: Encryption = Encryption::A192CbcHs384;
+}
 
-    let key = key.as_ref();
-    if key.len() != mac_key_len + enc_key_len {
-        return Err(Error::InvalidKeyLength);
-    }
-
-    let mac_key = &key[..mac_key_len];
-    let enc_key = &key[mac_key_len..];
-
-    let iv = iv.as_ref();
-    if iv.len() != 16 {
-        return Err(Error::InvalidIvLength);
-    }
-
-    let ciphertext = ciphertext.as_ref();
-    let tag = tag.as_ref();
-    let tag_len = mac_key_len;
-
-    if tag.len() != tag_len {
-        return Err(Error::Decryption);
-    }
-
-    let al: u64 = (aad.as_ref().len() as u64) * 8;
-
-    // M = MAC(MAC_KEY, A || IV || E || AL),
-    let mut hmac = Hmac::<D>::new_from_slice(mac_key)?;
-    hmac.update(aad.as_ref());
-    hmac.update(iv);
-    hmac.update(ciphertext);
-    hmac.update(&al.to_be_bytes());
-    let m = hmac.finalize();
-
-    // T = initial T_LEN octets of M.
-    let computed_tag = &m.as_bytes()[..tag_len];
-
-    // Verify tag in constant time
-    if computed_tag.ct_ne(tag).into() {
-        return Err(Error::Decryption);
-    }
-
-    // P = CBC-PKCS7-DEC(ENC_KEY, E),
-    let decryptor = cbc::Decryptor::<Aes>::new_from_slices(enc_key, iv)?;
-    let plaintext = decryptor
-        .decrypt_padded_vec::<Pkcs7>(ciphertext)
-        .map_err(|_| Error::Decryption)?;
-
-    Ok(plaintext.into())
+impl EncryptionAlgorithm for AesCbcHmacKey<Aes256, Sha512> {
+    const ENC: Encryption = Encryption::A256CbcHs512;
 }
 
 #[cfg(test)]
@@ -275,9 +216,9 @@ mod tests {
     //! See: https://www.rfc-editor.org/rfc/rfc7518#appendix-B
 
     use super::*;
-    use aes::{Aes128, Aes192, Aes256};
+    use aes::{Aes192, Aes256};
     use alloc::vec::Vec;
-    use sha2::{Sha256, Sha384, Sha512};
+    use sha2::{Sha384, Sha512};
 
     /// Test vectors from RFC 7518 Appendix B.1.
     ///
@@ -360,14 +301,9 @@ mod tests {
         );
 
         // Test decryption
-        let decrypted = aes_cbc_hmac_decrypt::<Aes128, Sha256>(
-            &k,
-            &encrypted.ciphertext,
-            &a,
-            &encrypted.tag,
-            &encrypted.iv,
-        )
-        .unwrap();
+        let decrypted = encryptor
+            .decrypt(&encrypted.ciphertext, &a, &encrypted.tag, &encrypted.iv)
+            .unwrap();
 
         assert_eq!(
             decrypted.as_ref(),
@@ -457,14 +393,9 @@ mod tests {
         );
 
         // Test decryption
-        let decrypted = aes_cbc_hmac_decrypt::<Aes192, Sha384>(
-            &k,
-            &encrypted.ciphertext,
-            &a,
-            &encrypted.tag,
-            &encrypted.iv,
-        )
-        .unwrap();
+        let decrypted = encryptor
+            .decrypt(&encrypted.ciphertext, &a, &encrypted.tag, &encrypted.iv)
+            .unwrap();
 
         assert_eq!(
             decrypted.as_ref(),
@@ -556,14 +487,9 @@ mod tests {
         );
 
         // Test decryption
-        let decrypted = aes_cbc_hmac_decrypt::<Aes256, Sha512>(
-            &k,
-            &encrypted.ciphertext,
-            &a,
-            &encrypted.tag,
-            &encrypted.iv,
-        )
-        .unwrap();
+        let decrypted = encryptor
+            .decrypt(&encrypted.ciphertext, &a, &encrypted.tag, &encrypted.iv)
+            .unwrap();
 
         assert_eq!(
             decrypted.as_ref(),

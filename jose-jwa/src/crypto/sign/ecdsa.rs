@@ -134,21 +134,21 @@ where
         = EcdsaSigner<'a, C>
     where
         Self: 'a;
-    type SignError = Error;
+    type SignerError = Error;
     type VerifyingKey = EcdsaVerifyingKey<C>;
 
     fn alg(&self) -> Signing {
         C::alg()
     }
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError> {
         Ok(EcdsaSigner {
             digest: C::Digest::new(),
             key: &self.key,
         })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignerError> {
         let mut signer = self.signer()?;
         signer.update(data).expect("infallible");
         signer.finish()
@@ -163,16 +163,20 @@ where
 
 impl<C> VerifyingKey for EcdsaSigningKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
     SignatureSize<C>: ArraySize,
 {
     type Verifier<'a>
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
-    type Error = Error;
+    type VerifierError = Error;
 
-    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
+    fn alg(&self) -> Signing {
+        C::alg()
+    }
+
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(EcdsaVerifier {
             digest: C::Digest::new(),
             key: self.key.verifying_key(),
@@ -183,7 +187,7 @@ where
         &self,
         data: impl AsRef<[u8]>,
         signature: impl AsRef<[u8]>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Self::VerifierError> {
         let mut verifier = self.verifier()?;
         verifier.update(data).expect("infallible");
         verifier.finish(signature)
@@ -296,16 +300,20 @@ where
 
 impl<C> VerifyingKey for EcdsaVerifyingKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
     SignatureSize<C>: ArraySize,
 {
     type Verifier<'a>
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
-    type Error = Error;
+    type VerifierError = Error;
 
-    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
+    fn alg(&self) -> Signing {
+        C::alg()
+    }
+
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(EcdsaVerifier {
             digest: C::Digest::new(),
             key: &self.key,
@@ -316,7 +324,7 @@ where
         &self,
         data: impl AsRef<[u8]>,
         signature: impl AsRef<[u8]>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Self::VerifierError> {
         let mut verifier = self.verifier()?;
         verifier.update(data).map_err(|_| Error::Verify)?;
         verifier.finish(signature)

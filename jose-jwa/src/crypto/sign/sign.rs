@@ -18,7 +18,7 @@ use super::VerifyingKey;
 /// A one-shot `sign()` method is provided for convenience.
 pub trait SigningKey: VerifyingKey {
     /// The error type returned when creating a signer.
-    type SignError: Error;
+    type SignerError: Error;
 
     /// The signer state type.
     type Signer<'a>: Signer
@@ -35,7 +35,7 @@ pub trait SigningKey: VerifyingKey {
     ///
     /// Returns a `Signer` that can be used to incrementally feed data
     /// and then finalize to produce a signature.
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError>;
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError>;
 
     /// Sign data in one shot.
     ///
@@ -44,7 +44,7 @@ pub trait SigningKey: VerifyingKey {
     ///
     /// # Arguments
     /// * `data` - The data to sign
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError>;
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignerError>;
 
     /// Get the corresponding verifying key.
     fn verifying_key(&self) -> Self::VerifyingKey;

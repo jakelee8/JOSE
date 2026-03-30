@@ -15,7 +15,8 @@ use digest::consts::U12;
 use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
-use super::{DecryptingKey, Encrypted, EncryptingKey};
+use super::{Encrypted, EncryptionKey};
+use crate::crypto::private::EncryptionAlgorithm;
 use crate::{Encryption, Error};
 
 /// AES-128-GCM content encryption key (128-bit key).
@@ -31,24 +32,6 @@ pub type Aes192GcmKey = AesGcmKey<aes::Aes192>;
 /// Used with the `A256GCM` algorithm per RFC 7518 Section 5.3.
 pub type Aes256GcmKey = AesGcmKey<aes::Aes256>;
 
-/// Private trait for compile-time AES-GCM algorithm mapping.
-pub trait AesGcmAlgorithm {
-    /// The content encryption algorithm identifier.
-    const ENC: Encryption;
-}
-
-impl AesGcmAlgorithm for aes::Aes128 {
-    const ENC: Encryption = Encryption::A128Gcm;
-}
-
-impl AesGcmAlgorithm for aes::Aes192 {
-    const ENC: Encryption = Encryption::A192Gcm;
-}
-
-impl AesGcmAlgorithm for aes::Aes256 {
-    const ENC: Encryption = Encryption::A256Gcm;
-}
-
 /// An AES-GCM content encryption key.
 pub struct AesGcmKey<A> {
     k: Secret,
@@ -58,6 +41,7 @@ pub struct AesGcmKey<A> {
 impl<A> AesGcmKey<A>
 where
     A: KeySizeUser,
+    Self: EncryptionAlgorithm,
 {
     /// Create an AES-GCM key from raw bytes.
     ///
@@ -84,30 +68,22 @@ where
             _alg: PhantomData,
         })
     }
-
-    /// Get the content encryption algorithm.
-    pub fn enc(&self) -> Encryption
-    where
-        A: AesGcmAlgorithm,
-    {
-        A::ENC
-    }
-
-    /// Return the key bytes (JWK `k` parameter).
-    pub fn k(&self) -> &Secret {
-        &self.k
-    }
 }
 
-impl<A> EncryptingKey for AesGcmKey<A>
+impl<A> EncryptionKey for AesGcmKey<A>
 where
-    A: KeySizeUser + AesGcmAlgorithm,
+    A: KeySizeUser,
     AesGcm<A, U12>: KeyInit + AeadInOut,
+    Self: EncryptionAlgorithm,
 {
     type Error = Error;
 
     fn enc(&self) -> Encryption {
-        self.enc()
+        Self::ENC
+    }
+
+    fn k(&self) -> &Secret {
+        &self.k
     }
 
     fn encrypt(
@@ -137,13 +113,6 @@ where
             tag: tag.into(),
         })
     }
-}
-
-impl<A> DecryptingKey for AesGcmKey<A>
-where
-    AesGcm<A, U12>: KeyInit + AeadInOut,
-{
-    type Error = Error;
 
     fn decrypt(
         &self,
@@ -166,4 +135,16 @@ where
 
         Ok(Secret::from(plaintext))
     }
+}
+
+impl EncryptionAlgorithm for AesGcmKey<aes::Aes128> {
+    const ENC: Encryption = Encryption::A128Gcm;
+}
+
+impl EncryptionAlgorithm for AesGcmKey<aes::Aes192> {
+    const ENC: Encryption = Encryption::A192Gcm;
+}
+
+impl EncryptionAlgorithm for AesGcmKey<aes::Aes256> {
+    const ENC: Encryption = Encryption::A256Gcm;
 }

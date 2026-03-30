@@ -2,6 +2,8 @@ use core::error::Error;
 
 use jose_b64::stream::Update;
 
+use crate::Signing;
+
 /// A signature verification key.
 ///
 /// This trait is implemented by keys that can verify digital signatures.
@@ -13,7 +15,10 @@ use jose_b64::stream::Update;
 /// A one-shot `verify()` method is provided for convenience.
 pub trait VerifyingKey {
     /// The error type returned when creating a verifier.
-    type Error: Error;
+    type VerifierError: Error;
+
+    /// Returns the signing algorithm identifier.
+    fn alg(&self) -> Signing;
 
     /// The verifier state type.
     type Verifier<'a>: Verifier
@@ -24,7 +29,7 @@ pub trait VerifyingKey {
     ///
     /// Returns a `Verifier` that can be used to incrementally feed data
     /// and then finalize to verify a signature.
-    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error>;
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError>;
 
     /// Verify a signature in one shot.
     ///
@@ -38,7 +43,7 @@ pub trait VerifyingKey {
         &self,
         data: impl AsRef<[u8]>,
         signature: impl AsRef<[u8]>,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<(), Self::VerifierError>;
 }
 
 /// Signature verification state.

@@ -2,6 +2,7 @@
 
 mod enc;
 mod km;
+mod private;
 mod sign;
 
 pub use self::enc::*;

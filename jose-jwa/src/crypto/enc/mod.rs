@@ -15,17 +15,25 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::Encryption;
 
+#[cfg(feature = "aes-cbc-hmac")]
+pub use self::aes_cbc_hmac::*;
+#[cfg(feature = "aes-gcm")]
+pub use self::aes_gcm::*;
+
 /// Trait for keys that can encrypt content.
 ///
 /// This trait is implemented by keys that can perform content encryption
 /// for JWE. Encryption is done in one shot (not streaming) since AEAD
 /// algorithms require the full plaintext.
-pub trait EncryptingKey {
+pub trait EncryptionKey {
     /// The error type returned by encryption operations.
     type Error: core::error::Error;
 
     /// Returns the content encryption algorithm identifier.
     fn enc(&self) -> Encryption;
+
+    /// Return the key bytes (JWK `k` parameter).
+    fn k(&self) -> &Secret;
 
     /// Encrypt plaintext.
     ///
@@ -42,16 +50,6 @@ pub trait EncryptingKey {
         plaintext: impl AsRef<[u8]>,
         aad: impl AsRef<[u8]>,
     ) -> Result<Encrypted, Self::Error>;
-}
-
-/// Trait for keys that can decrypt content.
-///
-/// This trait is implemented by keys that can perform content decryption
-/// for JWE. Decryption is done in one shot (not streaming) since AEAD
-/// algorithms require the full ciphertext.
-pub trait DecryptingKey {
-    /// The error type returned by decryption operations.
-    type Error: core::error::Error;
 
     /// Decrypt ciphertext.
     ///
@@ -86,8 +84,3 @@ pub struct Encrypted {
     /// The authentication tag for integrity verification.
     pub tag: Bytes,
 }
-
-#[cfg(feature = "aes-cbc-hmac")]
-pub use self::aes_cbc_hmac::*;
-#[cfg(feature = "aes-gcm")]
-pub use self::aes_gcm::*;

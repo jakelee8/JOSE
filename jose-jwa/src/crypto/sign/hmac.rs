@@ -14,6 +14,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::private::SigningAlgorithm;
 use crate::{Error, Signing};
 
 /// HS256 (HMAC + SHA-256) signer
@@ -29,23 +30,6 @@ pub type Hs256Verify = HmacKey<Hmac<Sha256>>;
 pub type Hs384Verify = HmacKey<Hmac<Sha384>>;
 /// HS512 (HMAC + SHA-512) verifier
 pub type Hs512Verify = HmacKey<Hmac<Sha512>>;
-
-/// Private trait for compile-time HMAC algorithm mapping.
-trait HmacAlgorithm {
-    const ALG: Signing;
-}
-
-impl HmacAlgorithm for Sha256 {
-    const ALG: Signing = Signing::Hs256;
-}
-
-impl HmacAlgorithm for Sha384 {
-    const ALG: Signing = Signing::Hs384;
-}
-
-impl HmacAlgorithm for Sha512 {
-    const ALG: Signing = Signing::Hs512;
-}
 
 /// An HMAC signing/verification key.
 ///
@@ -94,26 +78,27 @@ where
 
 impl<D> SigningKey for HmacKey<D>
 where
-    D: EagerHash + TryKeyInit + HmacAlgorithm,
+    D: EagerHash + TryKeyInit,
+    Self: SigningAlgorithm,
 {
     type Signer<'a>
         = HmacState<D>
     where
         Self: 'a;
 
-    type SignError = Error;
+    type SignerError = Error;
     type VerifyingKey = Self;
 
     fn alg(&self) -> Signing {
-        D::ALG
+        Self::ALG
     }
 
-    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignError> {
+    fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError> {
         let hmac = D::new_from_slice(&self.k)?;
         Ok(HmacState { hmac })
     }
 
-    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignError> {
+    fn sign(&self, data: impl AsRef<[u8]>) -> Result<Bytes, Self::SignerError> {
         let mut state = self.signer()?;
         state.update(data).expect("infallible");
         Signer::finish(state).map_err(|_| Error::Sign)
@@ -130,15 +115,19 @@ where
 impl<D> VerifyingKey for HmacKey<D>
 where
     D: EagerHash + TryKeyInit,
+    Self: SigningAlgorithm,
 {
     type Verifier<'a>
         = HmacState<D>
     where
         Self: 'a;
+    type VerifierError = Error;
 
-    type Error = Error;
+    fn alg(&self) -> Signing {
+        Self::ALG
+    }
 
-    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::Error> {
+    fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         let hmac = D::new_from_slice(&self.k)?;
         Ok(HmacState { hmac })
     }
@@ -147,7 +136,7 @@ where
         &self,
         data: impl AsRef<[u8]>,
         signature: impl AsRef<[u8]>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Self::VerifierError> {
         let mut state = self.verifier()?;
         state.update(data).expect("infallible");
         Verifier::finish(state, signature)
@@ -217,4 +206,16 @@ impl From<InvalidLength> for Error {
     fn from(_: InvalidLength) -> Self {
         Error::InvalidKey
     }
+}
+
+impl SigningAlgorithm for HmacKey<Hmac<Sha256>> {
+    const ALG: Signing = Signing::Hs256;
+}
+
+impl SigningAlgorithm for HmacKey<Hmac<Sha384>> {
+    const ALG: Signing = Signing::Hs384;
+}
+
+impl SigningAlgorithm for HmacKey<Hmac<Sha512>> {
+    const ALG: Signing = Signing::Hs512;
 }
