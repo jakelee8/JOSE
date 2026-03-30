@@ -224,7 +224,7 @@ where
     /// * `y` - The y-coordinate as bytes (must match curve field size)
     ///
     /// # Errors
-    /// Returns `CipherError::InvalidKey` if the coordinates are invalid or the
+    /// Returns `Error::InvalidKey` if the coordinates are invalid or the
     /// point is not on the curve.
     pub fn from_components(x: impl AsRef<[u8]>, y: impl AsRef<[u8]>) -> Result<Self, Error> {
         let x = x.as_ref().try_into().map_err(|_| Error::InvalidKey)?;
@@ -311,7 +311,7 @@ where
     /// * `d` - The private scalar as bytes
     ///
     /// # Errors
-    /// Returns `CipherError::InvalidKey` if the scalar is zero or >= curve order.
+    /// Returns `Error::InvalidKey` if the scalar is zero or >= curve order.
     pub fn from_bytes(d: impl AsRef<[u8]>) -> Result<Self, Error> {
         let inner = SecretKey::<C>::from_slice(d.as_ref()).map_err(|_| Error::InvalidKey)?;
         Ok(Self { inner })
@@ -323,7 +323,7 @@ where
     /// * `rng` - A cryptographically secure random number generator
     ///
     /// # Errors
-    /// Returns `CipherError::Rng` if the RNG fails.
+    /// Returns `Error::Rng` if the RNG fails.
     pub fn random(rng: &mut impl TryCryptoRng) -> Result<Self, Error> {
         let inner = SecretKey::try_generate_from_rng(rng).map_err(|_| Error::Rng)?;
         Ok(Self { inner })

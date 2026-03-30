@@ -51,11 +51,11 @@ pub enum KeyManagement {
     #[serde(rename = "RSA1_5")]
     Rsa1_5,
 
-    /// RSA-OAEP with SHA-1 (Recommended per RFC 7518)
+    /// RSA-OAEP with SHA-1 (Recommended+ per RFC 7518)
     #[serde(rename = "RSA-OAEP")]
     RsaOaep,
 
-    /// RSA-OAEP with SHA-256 (Recommended)
+    /// RSA-OAEP with SHA-256 (Optional per RFC 7518)
     #[serde(rename = "RSA-OAEP-256")]
     RsaOaep256,
 
@@ -78,7 +78,7 @@ pub enum KeyManagement {
     #[serde(rename = "dir")]
     Dir,
 
-    /// ECDH-ES direct key agreement (Recommended per RFC 7518)
+    /// ECDH-ES direct key agreement (Recommended+ per RFC 7518)
     ///
     /// SECURITY: Ephemeral public key (`epk`) MUST be in protected header.
     #[serde(rename = "ECDH-ES")]
