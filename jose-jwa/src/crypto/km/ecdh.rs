@@ -40,7 +40,7 @@
 //!
 //! ## ECDH-ES with Key Wrap (e.g., ECDH-ES+A128KW)
 //!
-//! ```rust,ignore
+//! ```rust
 //! // Note: This example requires the "aes-kw" feature.
 //! // Sender: derive KEK, wrap CEK with AES-KW
 //! # use jose_jwa::crypto::{EcdhPublicKey, EcdhSecretKey, EcdhDeriveParams, EcdhDerivation};
