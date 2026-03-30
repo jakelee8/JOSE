@@ -9,7 +9,7 @@
 use alloc::vec;
 use core::marker::PhantomData;
 
-use aes::cipher::{InOutBuf, KeyInit};
+use aes_gcm::aes::cipher::{InOutBuf, KeyInit};
 use aes_gcm::{AeadInOut, AesGcm, KeySizeUser, Nonce};
 use digest::consts::U12;
 use jose_b64::serde::Secret;

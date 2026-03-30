@@ -23,16 +23,16 @@ default = []
 crypto = ["aes-cbc-hmac", "aes-gcm", "hmac", "p256", "p384", "p521", "k256", "rsa"]
 
 aes-cbc-hmac = ["dep:aes", "cbc", "hmac", "dep:jose-b64", "rand_core", "sha2", "subtle"]
-aes-gcm = ["dep:aes-gcm", "dep:jose-b64", "rand_core"]
+aes-gcm = ["dep:aes-gcm", "digest", "dep:jose-b64", "rand_core"]
 aes-kw = ["dep:aes", "dep:aes-kw", "digest"]
-ecdh = ["dep:aes-kw", "dep:elliptic-curve", "dep:jose-b64", "one-step-kdf", "dep:p256", "dep:p384", "dep:p521", "rand_core", "sha2", "digest"]
-hmac = ["dep:aes-gcm", "dep:hmac", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2", "subtle"]
-k256 = ["dep:k256", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2"]
-p256 = ["dep:p256", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2"]
-p384 = ["dep:p384", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2"]
-p521 = ["dep:p521", "digest", "ecdsa", "dep:elliptic-curve", "dep:jose-b64", "sha2"]
+ecdh = ["dep:aes-kw", "dep:elliptic-curve", "dep:jose-b64","dep:p256", "dep:p384", "dep:p521", "rand_core", "sha2"]
+hmac = ["dep:aes-gcm", "dep:hmac", "dep:jose-b64", "sha2", "subtle"]
+k256 = ["dep:k256", "digest", "ecdsa", "dep:jose-b64", "sha2"]
+p256 = ["dep:p256", "digest", "ecdsa", "dep:jose-b64", "sha2"]
+p384 = ["dep:p384", "digest", "ecdsa", "dep:jose-b64", "sha2"]
+p521 = ["dep:p521", "digest", "ecdsa", "dep:jose-b64", "sha2"]
 pbes2 = ["aes-kw", "dep:hmac", "dep:pbkdf2", "rand_core", "sha2"]
-rsa = ["dep:rsa", "digest", "dep:jose-b64", "rand_core", "sha1", "sha2"]
+rsa = ["dep:rsa", "dep:jose-b64", "rand_core", "sha1", "sha2"]
 
 # Include legacy/vulnerable algorithms (not recommended for production)
 legacy = ["legacy-rsa1_5"]
@@ -53,7 +53,6 @@ elliptic-curve = { workspace = true, default-features = false, optional = true, 
 hmac = { workspace = true, default-features = false, optional = true }
 jose-b64 = { workspace = true, optional = true }
 k256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
-one-step-kdf = { workspace = true, default-features = false, optional = true }
 p256 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
 p384 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }
 p521 = { workspace = true, default-features = false, optional = true, features = ["arithmetic"] }

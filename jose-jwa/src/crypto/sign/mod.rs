@@ -19,6 +19,9 @@ use jose_b64::serde::{Bytes, Secret};
 pub use self::sign::*;
 pub use self::verify::*;
 
+#[cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
+pub use self::ecdsa::{EcdsaSigningKey, EcdsaVerifyingKey};
+
 #[cfg(feature = "k256")]
 pub use self::ecdsa::{Es256KSigningKey, Es256KVerifyingKey};
 #[cfg(feature = "p256")]

@@ -80,14 +80,14 @@
 use alloc::vec;
 use core::fmt;
 
-use digest::OutputSizeUser;
-use digest::typenum::Unsigned;
 use elliptic_curve::ecdh::{SharedSecret, diffie_hellman};
 use elliptic_curve::point::AffineCoordinates;
 use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
 use elliptic_curve::{Curve, CurveArithmetic, Generate, PublicKey, SecretKey};
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
+use sha2::digest::OutputSizeUser;
+use sha2::digest::typenum::Unsigned;
 use sha2::{Digest, Sha256};
 
 use crate::Error;

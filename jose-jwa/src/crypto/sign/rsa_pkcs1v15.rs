@@ -2,13 +2,13 @@
 
 use core::marker::PhantomData;
 
-use digest::{Digest, OutputSizeUser};
 use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1v15};
+use sha2::digest::{Digest, OutputSizeUser};
 use sha2::{Sha256, Sha384, Sha512};
 
 use crate::crypto::{

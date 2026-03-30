@@ -128,7 +128,6 @@ impl KeyManagement {
     /// Returns the string representation of this sealing algorithm.
     pub const fn as_str(&self) -> &str {
         match self {
-            #[cfg(feature = "legacy-rsa1_5")]
             #[allow(deprecated)]
             Self::Rsa1_5 => "RSA1_5",
             Self::RsaOaep => "RSA-OAEP",

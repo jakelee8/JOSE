@@ -8,18 +8,18 @@
 
 #![cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
 
+use alloc::borrow::ToOwned;
 use core::convert::Infallible;
 
-use alloc::borrow::ToOwned;
 use digest::Digest;
+use ecdsa::elliptic_curve::array::ArraySize;
+use ecdsa::elliptic_curve::ops::Invert;
+use ecdsa::elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
+use ecdsa::elliptic_curve::subtle::CtOption;
+use ecdsa::elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
 use ecdsa::hazmat::DigestAlgorithm;
 use ecdsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use ecdsa::{EcdsaCurve, Signature, SignatureSize};
-use elliptic_curve::array::ArraySize;
-use elliptic_curve::ops::Invert;
-use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
-use elliptic_curve::subtle::CtOption;
-use elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
 use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 

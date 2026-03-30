@@ -8,13 +8,13 @@ use alloc::vec::Vec;
 use core::iter;
 use core::marker::PhantomData;
 
-use digest::{Digest, FixedOutputReset};
 use jose_b64::serde::{Bytes, Secret};
 use rand_core::{CryptoRng, TryCryptoRng};
 use rsa::traits::{PaddingScheme, PrivateKeyParts, PublicKeyParts};
 use rsa::{BoxedUint, Oaep, RsaPrivateKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
+use sha2::digest::{Digest, FixedOutputReset};
 
 use crate::Error;
 use crate::crypto::{UnwrappingKey, WrappedKey, WrappingKey};

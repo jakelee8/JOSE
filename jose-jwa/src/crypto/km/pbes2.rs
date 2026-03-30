@@ -31,8 +31,8 @@ use aes_kw::aes::{Aes128, Aes192, Aes256};
 use aes_kw::cipher::{
     BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, Key, KeyInit, KeySizeUser,
 };
-use digest::consts::U16;
 use hmac::EagerHash;
+use hmac::digest::consts::U16;
 use jose_b64::serde::Secret;
 use pbkdf2::pbkdf2_hmac;
 use rand_core::TryCryptoRng;
