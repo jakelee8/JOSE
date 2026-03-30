@@ -1,8 +1,3 @@
-//! JWS Cryptographic Implementation
-//!
-//! This module provides concrete implementations of JWS signing and verification
-//! algorithms as defined in RFC 7518.
-
 use core::error::Error;
 
 use jose_b64::serde::Bytes;

@@ -30,6 +30,23 @@ pub type Rs384VerifyingKey = RsaPkcs1v15VerifyingKey<Sha384>;
 /// RS512 (RSA-PKCS#1 v1.5 + SHA-512) verifying key
 pub type Rs512VerifyingKey = RsaPkcs1v15VerifyingKey<Sha512>;
 
+/// Private trait for compile-time RSA-PKCS#1 v1.5 algorithm mapping.
+trait RsaPkcs1v15Algorithm {
+    const ALG: Signing;
+}
+
+impl RsaPkcs1v15Algorithm for Sha256 {
+    const ALG: Signing = Signing::Rs256;
+}
+
+impl RsaPkcs1v15Algorithm for Sha384 {
+    const ALG: Signing = Signing::Rs384;
+}
+
+impl RsaPkcs1v15Algorithm for Sha512 {
+    const ALG: Signing = Signing::Rs512;
+}
+
 /// RSA-PKCS#1 v1.5 signing key.
 ///
 /// This type wraps an RSA private key for PKCS#1 v1.5 signing operations.
@@ -301,21 +318,4 @@ where
 
         key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
-}
-
-/// Private trait for compile-time RSA-PKCS#1 v1.5 algorithm mapping.
-trait RsaPkcs1v15Algorithm {
-    const ALG: Signing;
-}
-
-impl RsaPkcs1v15Algorithm for Sha256 {
-    const ALG: Signing = Signing::Rs256;
-}
-
-impl RsaPkcs1v15Algorithm for Sha384 {
-    const ALG: Signing = Signing::Rs384;
-}
-
-impl RsaPkcs1v15Algorithm for Sha512 {
-    const ALG: Signing = Signing::Rs512;
 }

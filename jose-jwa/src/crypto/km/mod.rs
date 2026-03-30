@@ -45,8 +45,6 @@ pub enum KeyManagement {
     ///
     /// SECURITY WARNING: This algorithm is vulnerable to Bleichenbacher's
     /// Million Message Attack. Use `RsaOaep` or `RsaOaep256` instead.
-    /// Only available with `legacy-rsa1_5` feature flag.
-    #[cfg(feature = "legacy-rsa1_5")]
     #[deprecated(
         note = "RSA1_5 is vulnerable to Bleichenbacher's attack. Use RsaOaep or RsaOaep256 instead."
     )]

@@ -30,6 +30,23 @@ pub type Hs384Verify = HmacKey<Hmac<Sha384>>;
 /// HS512 (HMAC + SHA-512) verifier
 pub type Hs512Verify = HmacKey<Hmac<Sha512>>;
 
+/// Private trait for compile-time HMAC algorithm mapping.
+trait HmacAlgorithm {
+    const ALG: Signing;
+}
+
+impl HmacAlgorithm for Sha256 {
+    const ALG: Signing = Signing::Hs256;
+}
+
+impl HmacAlgorithm for Sha384 {
+    const ALG: Signing = Signing::Hs384;
+}
+
+impl HmacAlgorithm for Sha512 {
+    const ALG: Signing = Signing::Hs512;
+}
+
 /// An HMAC signing/verification key.
 ///
 /// This type wraps an HMAC key and implements both [`SigningKey`] and
@@ -200,21 +217,4 @@ impl From<InvalidLength> for Error {
     fn from(_: InvalidLength) -> Self {
         Error::InvalidKey
     }
-}
-
-/// Private trait for compile-time HMAC algorithm mapping.
-trait HmacAlgorithm {
-    const ALG: Signing;
-}
-
-impl HmacAlgorithm for Sha256 {
-    const ALG: Signing = Signing::Hs256;
-}
-
-impl HmacAlgorithm for Sha384 {
-    const ALG: Signing = Signing::Hs384;
-}
-
-impl HmacAlgorithm for Sha512 {
-    const ALG: Signing = Signing::Hs512;
 }

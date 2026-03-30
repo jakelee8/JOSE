@@ -6,6 +6,7 @@ use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::{
     BlockCipherDecrypt, BlockCipherEncrypt, BlockModeEncrypt, Iv, KeyIvInit, KeySizeUser,
 };
+use aes::{Aes128, Aes192, Aes256};
 use hmac::{EagerHash, Hmac, KeyInit, Mac};
 use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
@@ -25,6 +26,24 @@ pub type Aes192CbcHmacSha384Key = AesCbcHmacKey<Aes192, Sha384>;
 /// Type alias for A256CBC-HS512 keys (AES-256 with SHA-512).
 pub type Aes256CbcHmacSha512Key = AesCbcHmacKey<Aes256, Sha512>;
 
+/// Private trait for compile-time AES-CBC-HMAC algorithm mapping.
+pub trait AesCbcHmacAlgorithm {
+    /// The content encryption algorithm identifier.
+    const ENC: Encryption;
+}
+
+impl AesCbcHmacAlgorithm for (Aes128, Sha256) {
+    const ENC: Encryption = Encryption::A128CbcHs256;
+}
+
+impl AesCbcHmacAlgorithm for (Aes192, Sha384) {
+    const ENC: Encryption = Encryption::A192CbcHs384;
+}
+
+impl AesCbcHmacAlgorithm for (Aes256, Sha512) {
+    const ENC: Encryption = Encryption::A256CbcHs512;
+}
+
 /// An AES-CBC with HMAC-SHA2 content encryption key.
 ///
 /// This type wraps a composite key (MAC key || ENC key) and implements
@@ -37,8 +56,6 @@ pub struct AesCbcHmacKey<A, H> {
     k: Secret,
     _alg: PhantomData<(A, H)>,
 }
-
-use aes::{Aes128, Aes192, Aes256};
 
 impl<A, D> AesCbcHmacKey<A, D>
 where
@@ -591,22 +608,4 @@ mod tests {
     }
 
     impl TryCryptoRng for FixedRng {}
-}
-
-/// Private trait for compile-time AES-CBC-HMAC algorithm mapping.
-pub trait AesCbcHmacAlgorithm {
-    /// The content encryption algorithm identifier.
-    const ENC: Encryption;
-}
-
-impl AesCbcHmacAlgorithm for (Aes128, Sha256) {
-    const ENC: Encryption = Encryption::A128CbcHs256;
-}
-
-impl AesCbcHmacAlgorithm for (Aes192, Sha384) {
-    const ENC: Encryption = Encryption::A192CbcHs384;
-}
-
-impl AesCbcHmacAlgorithm for (Aes256, Sha512) {
-    const ENC: Encryption = Encryption::A256CbcHs512;
 }

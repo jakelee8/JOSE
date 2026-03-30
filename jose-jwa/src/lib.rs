@@ -25,15 +25,19 @@
     feature = "aes-kw",
     feature = "ecdh",
     feature = "hmac",
+    feature = "k256",
     feature = "p256",
     feature = "p384",
     feature = "p521",
-    feature = "k256",
-    feature = "rsa"
+    feature = "rsa",
 ))]
 extern crate alloc;
 
 mod alg;
+mod enc;
+mod error;
+mod sign;
+
 /// Cryptographic operations and key types.
 ///
 /// This module provides concrete implementations of:
@@ -42,9 +46,6 @@ mod alg;
 /// - Key wrapping/unwrapping
 /// - Cryptographic traits for algorithm abstraction
 pub mod crypto;
-mod enc;
-mod error;
-mod sign;
 
 pub use self::alg::*;
 #[cfg(any(

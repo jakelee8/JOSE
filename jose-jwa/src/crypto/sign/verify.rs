@@ -1,17 +1,3 @@
-//! JWS Cryptographic Implementation - Verification
-//!
-//! This module provides verification-specific implementations.
-//! The main traits are re-exported from `sign` for consistency.
-
-#![cfg(any(
-    feature = "hmac",
-    feature = "p256",
-    feature = "p384",
-    feature = "p521",
-    feature = "k256",
-    feature = "rsa"
-))]
-
 use core::error::Error;
 
 use jose_b64::stream::Update;

@@ -31,6 +31,24 @@ pub type Aes192GcmKey = AesGcmKey<aes::Aes192>;
 /// Used with the `A256GCM` algorithm per RFC 7518 Section 5.3.
 pub type Aes256GcmKey = AesGcmKey<aes::Aes256>;
 
+/// Private trait for compile-time AES-GCM algorithm mapping.
+pub trait AesGcmAlgorithm {
+    /// The content encryption algorithm identifier.
+    const ENC: Encryption;
+}
+
+impl AesGcmAlgorithm for aes::Aes128 {
+    const ENC: Encryption = Encryption::A128Gcm;
+}
+
+impl AesGcmAlgorithm for aes::Aes192 {
+    const ENC: Encryption = Encryption::A192Gcm;
+}
+
+impl AesGcmAlgorithm for aes::Aes256 {
+    const ENC: Encryption = Encryption::A256Gcm;
+}
+
 /// An AES-GCM content encryption key.
 pub struct AesGcmKey<A> {
     k: Secret,
@@ -148,22 +166,4 @@ where
 
         Ok(Secret::from(plaintext))
     }
-}
-
-/// Private trait for compile-time AES-GCM algorithm mapping.
-pub trait AesGcmAlgorithm {
-    /// The content encryption algorithm identifier.
-    const ENC: Encryption;
-}
-
-impl AesGcmAlgorithm for aes::Aes128 {
-    const ENC: Encryption = Encryption::A128Gcm;
-}
-
-impl AesGcmAlgorithm for aes::Aes192 {
-    const ENC: Encryption = Encryption::A192Gcm;
-}
-
-impl AesGcmAlgorithm for aes::Aes256 {
-    const ENC: Encryption = Encryption::A256Gcm;
 }

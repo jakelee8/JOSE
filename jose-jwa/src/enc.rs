@@ -1,10 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Profian Inc. <opensource@profian.com>
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
 //! Content encryption algorithms for JWE "enc" header (RFC 7518 Section 5.1).
-//!
-//! NOTE: This is NOT part of `Algorithm` enum. Content encryption algorithms
-//! appear in the JWE "enc" header, not in JWK "alg" parameter.
 
 use core::fmt;
 use core::str::FromStr;

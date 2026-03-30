@@ -13,11 +13,6 @@ use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[cfg(feature = "aes-cbc-hmac")]
-pub use self::aes_cbc_hmac::*;
-#[cfg(feature = "aes-gcm")]
-pub use self::aes_gcm::*;
-
 use crate::Encryption;
 
 /// Trait for keys that can encrypt content.
@@ -91,3 +86,8 @@ pub struct Encrypted {
     /// The authentication tag for integrity verification.
     pub tag: Bytes,
 }
+
+#[cfg(feature = "aes-cbc-hmac")]
+pub use self::aes_cbc_hmac::*;
+#[cfg(feature = "aes-gcm")]
+pub use self::aes_gcm::*;

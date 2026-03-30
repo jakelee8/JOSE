@@ -1,7 +1,4 @@
 //! Error types for JOSE cryptographic operations.
-//!
-//! This module provides a unified error type for cryptographic operations
-//! including content encryption, key management, signing, and verification.
 
 use core::fmt;
 
