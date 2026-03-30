@@ -7,45 +7,72 @@
 //!
 //! ## ECDH-ES Direct Key Agreement
 //!
-//! ```rust,ignore
+//! ```rust
+//! # use jose_jwa::crypto::{EcdhPublicKey, EcdhSecretKey, EcdhDeriveParams, EcdhDerivation};
+//! # fn example() -> Result<(), jose_jwa::Error> {
+//! # let x = [0u8; 32];
+//! # let y = [0u8; 32];
+//! # let d = [0x54u8; 32];
+//! # let epk_x = [0xd3u8; 32];
+//! # let epk_y = [0xd3u8; 32];
+//! # let mut rng = getrandom::SysRng;
 //! // Sender: generate ephemeral key, derive CEK
 //! let recipient_public = EcdhPublicKey::<p256::NistP256>::from_components(&x, &y)?;
-//! let ephemeral = EcdhSecretKey::<p256::NistP256>::random(rng)?;
+//! let ephemeral = EcdhSecretKey::<p256::NistP256>::random(&mut rng)?;
 //! let cek = ephemeral.derive(&recipient_public, &EcdhDeriveParams {
 //!     algorithm: EcdhDerivation::A128Gcm,
-//!     apu: &apu,
-//!     apv: &apv,
+//!     apu: None,
+//!     apv: None,
 //! });
 //! // Serialize ephemeral.public_key() to JWE header as 'epk'
 //!
 //! // Recipient: use static key, derive same CEK
 //! let static_key = EcdhSecretKey::<p256::NistP256>::from_bytes(&d)?;
-//! let sender_epk = EcdhPublicKey::from_components(&epk_x, &epk_y)?;
+//! let sender_epk = EcdhPublicKey::<p256::NistP256>::from_components(&epk_x, &epk_y)?;
 //! let cek = static_key.derive(&sender_epk, &EcdhDeriveParams {
 //!     algorithm: EcdhDerivation::A128Gcm,
-//!     apu: &apu,
-//!     apv: &apv,
+//!     apu: None,
+//!     apv: None,
 //! });
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## ECDH-ES with Key Wrap (e.g., ECDH-ES+A128KW)
 //!
 //! ```rust,ignore
+//! // Note: This example requires the "aes-kw" feature.
 //! // Sender: derive KEK, wrap CEK with AES-KW
+//! # use jose_jwa::crypto::{EcdhPublicKey, EcdhSecretKey, EcdhDeriveParams, EcdhDerivation};
+//! # use jose_jwa::crypto::{AesKwKey128, WrappingKey, UnwrappingKey};
+//! # fn example() -> Result<(), jose_jwa::Error> {
+//! # let x = [0u8; 32];
+//! # let y = [0u8; 32];
+//! # let d = [0x54u8; 32];
+//! # let epk_x = [0xd3u8; 32];
+//! # let epk_y = [0xd3u8; 32];
+//! # let cek = [0xabu8; 16];
+//! # let mut rng = getrandom::SysRng;
+//! # let ephemeral = EcdhSecretKey::<p256::NistP256>::random(&mut rng)?;
+//! # let recipient_public = EcdhPublicKey::<p256::NistP256>::from_components(&x, &y)?;
 //! let kek = ephemeral.derive(&recipient_public, &EcdhDeriveParams {
 //!     algorithm: EcdhDerivation::EcdhEsA128Kw,
-//!     apu: &apu,
-//!     apv: &apv,
+//!     apu: None,
+//!     apv: None,
 //! });
-//! let wrapped_cek = AesKwKey128::try_from(kek)?.wrap(rng, &cek)?;
+//! let wrapped_cek = AesKwKey128::try_from(kek)?.wrap_key(&mut rng, cek)?;
 //!
 //! // Recipient: derive same KEK, unwrap CEK
+//! # let static_key = EcdhSecretKey::<p256::NistP256>::from_bytes(&d)?;
+//! # let sender_epk = EcdhPublicKey::<p256::NistP256>::from_components(&epk_x, &epk_y)?;
 //! let kek = static_key.derive(&sender_epk, &EcdhDeriveParams {
 //!     algorithm: EcdhDerivation::EcdhEsA128Kw,
-//!     apu: &apu,
-//!     apv: &apv,
+//!     apu: None,
+//!     apv: None,
 //! });
-//! let cek = AesKwKey128::try_from(kek)?.unwrap(&wrapped_cek)?;
+//! let unwrapped_cek = AesKwKey128::try_from(kek)?.unwrap_key(&wrapped_cek)?;
+//! # Ok(())
+//! # }
 //! ```
 
 #![cfg(feature = "ecdh")]
@@ -187,7 +214,11 @@ pub struct EcdhDeriveParams {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// # use jose_jwa::crypto::{EcdhPublicKey, EcCurves};
+/// # fn example() -> Result<(), jose_jwa::Error> {
+/// # let x_bytes = [0xd3u8; 32];
+/// # let y_bytes = [0xd3u8; 32];
 /// // Construct from JWK coordinates
 /// let pk = EcdhPublicKey::<p256::NistP256>::from_components(&x_bytes, &y_bytes)?;
 ///
@@ -195,6 +226,9 @@ pub struct EcdhDeriveParams {
 /// let crv = pk.crv(); // EcCurves::P256
 /// let x = pk.x();     // Bytes
 /// let y = pk.y();     // Bytes
+/// # assert_eq!(crv, EcCurves::P256);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct EcdhPublicKey<C: CurveArithmetic> {
