@@ -118,7 +118,7 @@ impl From<&RsaPrivateKey> for Rsa {
                 .retrieve()
                 .to_be_bytes()
                 .into(),
-            oth: alloc::vec![],
+            oth: alloc::vec::Vec::new(),
         });
         Self {
             n: pk.n().to_be_bytes_trimmed_vartime().into(),

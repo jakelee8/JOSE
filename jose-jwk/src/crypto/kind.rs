@@ -5,6 +5,12 @@ use jose_jwa::Algorithm;
 
 use super::KeyInfo;
 
+#[cfg(any(feature = "p256", feature = "p384", feature = "p521", feature = "k256"))]
+use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey};
+
+#[cfg(feature = "rsa")]
+use super::key::{RsaSigningKey, RsaVerifyingKey};
+
 /// The kind of a key (public or private).
 pub enum Kind<P, S> {
     /// A public key.
@@ -31,8 +37,8 @@ impl<P: KeyInfo, S: KeyInfo> KeyInfo for Kind<P, S> {
 }
 
 #[cfg(feature = "rsa")]
-impl From<&Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>> for crate::Rsa {
-    fn from(value: &Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>) -> Self {
+impl From<&Kind<RsaVerifyingKey, RsaSigningKey>> for crate::Rsa {
+    fn from(value: &Kind<RsaVerifyingKey, RsaSigningKey>) -> Self {
         match value {
             Kind::Public(key) => key.into(),
             Kind::Secret(key) => key.into(),
@@ -41,7 +47,7 @@ impl From<&Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey>> for crate::Rsa {
 }
 
 #[cfg(feature = "rsa")]
-impl TryFrom<&crate::Rsa> for Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey> {
+impl TryFrom<&crate::Rsa> for Kind<RsaVerifyingKey, RsaSigningKey> {
     type Error = super::Error;
 
     fn try_from(value: &crate::Rsa) -> Result<Self, Self::Error> {
@@ -54,8 +60,8 @@ impl TryFrom<&crate::Rsa> for Kind<rsa::RsaPublicKey, rsa::RsaPrivateKey> {
 }
 
 #[cfg(feature = "p256")]
-impl From<&Kind<p256::PublicKey, p256::SecretKey>> for crate::Ec {
-    fn from(value: &Kind<p256::PublicKey, p256::SecretKey>) -> Self {
+impl From<&Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>>> for crate::Ec {
+    fn from(value: &Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>>) -> Self {
         match value {
             Kind::Public(key) => key.into(),
             Kind::Secret(key) => key.into(),
@@ -64,7 +70,7 @@ impl From<&Kind<p256::PublicKey, p256::SecretKey>> for crate::Ec {
 }
 
 #[cfg(feature = "p256")]
-impl TryFrom<&crate::Ec> for Kind<p256::PublicKey, p256::SecretKey> {
+impl TryFrom<&crate::Ec> for Kind<EcdsaVerifyingKey<p256::NistP256>, EcdsaSigningKey<p256::NistP256>> {
     type Error = super::Error;
 
     fn try_from(value: &crate::Ec) -> Result<Self, Self::Error> {
@@ -77,8 +83,8 @@ impl TryFrom<&crate::Ec> for Kind<p256::PublicKey, p256::SecretKey> {
 }
 
 #[cfg(feature = "p384")]
-impl From<&Kind<p384::PublicKey, p384::SecretKey>> for crate::Ec {
-    fn from(value: &Kind<p384::PublicKey, p384::SecretKey>) -> Self {
+impl From<&Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>>> for crate::Ec {
+    fn from(value: &Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>>) -> Self {
         match value {
             Kind::Public(key) => key.into(),
             Kind::Secret(key) => key.into(),
@@ -87,7 +93,7 @@ impl From<&Kind<p384::PublicKey, p384::SecretKey>> for crate::Ec {
 }
 
 #[cfg(feature = "p384")]
-impl TryFrom<&crate::Ec> for Kind<p384::PublicKey, p384::SecretKey> {
+impl TryFrom<&crate::Ec> for Kind<EcdsaVerifyingKey<p384::NistP384>, EcdsaSigningKey<p384::NistP384>> {
     type Error = super::Error;
 
     fn try_from(value: &crate::Ec) -> Result<Self, Self::Error> {
@@ -100,8 +106,8 @@ impl TryFrom<&crate::Ec> for Kind<p384::PublicKey, p384::SecretKey> {
 }
 
 #[cfg(feature = "p521")]
-impl From<&Kind<p521::PublicKey, p521::SecretKey>> for crate::Ec {
-    fn from(value: &Kind<p521::PublicKey, p521::SecretKey>) -> Self {
+impl From<&Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>>> for crate::Ec {
+    fn from(value: &Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>>) -> Self {
         match value {
             Kind::Public(key) => key.into(),
             Kind::Secret(key) => key.into(),
@@ -110,7 +116,7 @@ impl From<&Kind<p521::PublicKey, p521::SecretKey>> for crate::Ec {
 }
 
 #[cfg(feature = "p521")]
-impl TryFrom<&crate::Ec> for Kind<p521::PublicKey, p521::SecretKey> {
+impl TryFrom<&crate::Ec> for Kind<EcdsaVerifyingKey<p521::NistP521>, EcdsaSigningKey<p521::NistP521>> {
     type Error = super::Error;
 
     fn try_from(value: &crate::Ec) -> Result<Self, Self::Error> {
@@ -123,8 +129,8 @@ impl TryFrom<&crate::Ec> for Kind<p521::PublicKey, p521::SecretKey> {
 }
 
 #[cfg(feature = "k256")]
-impl From<&Kind<k256::PublicKey, k256::SecretKey>> for crate::Ec {
-    fn from(value: &Kind<k256::PublicKey, k256::SecretKey>) -> Self {
+impl From<&Kind<EcdsaVerifyingKey<k256::Secp256k1>, EcdsaSigningKey<k256::Secp256k1>>> for crate::Ec {
+    fn from(value: &Kind<EcdsaVerifyingKey<k256::Secp256k1>, EcdsaSigningKey<k256::Secp256k1>>) -> Self {
         match value {
             Kind::Public(key) => key.into(),
             Kind::Secret(key) => key.into(),
@@ -133,7 +139,7 @@ impl From<&Kind<k256::PublicKey, k256::SecretKey>> for crate::Ec {
 }
 
 #[cfg(feature = "k256")]
-impl TryFrom<&crate::Ec> for Kind<k256::PublicKey, k256::SecretKey> {
+impl TryFrom<&crate::Ec> for Kind<EcdsaVerifyingKey<k256::Secp256k1>, EcdsaSigningKey<k256::Secp256k1>> {
     type Error = super::Error;
 
     fn try_from(value: &crate::Ec) -> Result<Self, Self::Error> {

@@ -92,8 +92,9 @@ mod rfc7517 {
 
         #[cfg(feature = "p256")]
         if let Key::Ec(key) = &jwk.keys[0].key {
-            let pk = p256::PublicKey::try_from(key).unwrap();
-            assert_eq!(key, &pk.into());
+            use jose_jwa::crypto::EcdsaVerifyingKey;
+            let pk: EcdsaVerifyingKey<p256::NistP256> = key.try_into().unwrap();
+            assert_eq!(key, &(&pk).into());
         } else {
             unreachable!()
         }
@@ -299,8 +300,9 @@ mod rfc7517 {
 
         #[cfg(feature = "p256")]
         if let Key::Ec(key) = &jwk.keys[0].key {
-            let sk = p256::SecretKey::try_from(key).unwrap();
-            assert_eq!(key, &sk.into());
+            use jose_jwa::crypto::EcdsaSigningKey;
+            let sk: EcdsaSigningKey<p256::NistP256> = key.try_into().unwrap();
+            assert_eq!(key, &(&sk).into());
         } else {
             unreachable!()
         }

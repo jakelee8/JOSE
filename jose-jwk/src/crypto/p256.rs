@@ -76,7 +76,8 @@ impl TryFrom<&Ec> for EcdsaVerifyingKey<p256::NistP256> {
         }
 
         // Build uncompressed SEC1 point: 0x04 || x || y
-        let mut sec1 = vec![0x04u8];
+        let mut sec1 = alloc::vec::Vec::new();
+        sec1.push(0x04u8);
         sec1.extend_from_slice(&value.x);
         sec1.extend_from_slice(&value.y);
 
@@ -115,7 +116,7 @@ impl TryFrom<&Ec> for EcdsaSigningKey<p256::NistP256> {
         }
 
         if let Some(d) = value.d.as_ref() {
-            return Self::from_bytes(&d.0).map_err(|_| Error::Invalid);
+            return Self::from_bytes(d.as_ref()).map_err(|_| Error::Invalid);
         }
 
         Err(Error::NotPrivate)

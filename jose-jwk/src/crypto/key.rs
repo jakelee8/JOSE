@@ -7,7 +7,7 @@ use jose_jwa::Algorithm;
 use jose_jwa::crypto::{
     EcdsaSigningKey, EcdsaVerifyingKey, Ps256SigningKey, Ps256VerifyingKey, Ps384SigningKey,
     Ps384VerifyingKey, Ps512SigningKey, Ps512VerifyingKey, Rs256SigningKey, Rs256VerifyingKey,
-    Rs384SigningKey, Rs384VerifyingKey, Rs512SigningKey, Rs512VerifyingKey,
+    Rs384SigningKey, Rs384VerifyingKey, Rs512SigningKey, Rs512VerifyingKey, RsaComponents,
 };
 use zeroize::Zeroizing;
 
@@ -30,6 +30,157 @@ pub enum RsaSigningKey {
     Ps512(Ps512SigningKey),
 }
 
+#[cfg(feature = "rsa")]
+impl KeyInfo for RsaSigningKey {
+    fn strength(&self) -> usize {
+        match self {
+            Self::Rs256(k) => k.n().len() / 16,
+            Self::Rs384(k) => k.n().len() / 16,
+            Self::Rs512(k) => k.n().len() / 16,
+            Self::Ps256(k) => k.n().len() / 16,
+            Self::Ps384(k) => k.n().len() / 16,
+            Self::Ps512(k) => k.n().len() / 16,
+        }
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        let strength = self.strength();
+        self.strength() >= 16
+            && match (self, algo) {
+                (Self::Rs256(_), Algorithm::Signing(jose_jwa::Signing::Rs256)) => strength >= 16,
+                (Self::Rs384(_), Algorithm::Signing(jose_jwa::Signing::Rs384)) => strength >= 24,
+                (Self::Rs512(_), Algorithm::Signing(jose_jwa::Signing::Rs512)) => strength >= 32,
+                (Self::Ps256(_), Algorithm::Signing(jose_jwa::Signing::Ps256)) => strength >= 16,
+                (Self::Ps384(_), Algorithm::Signing(jose_jwa::Signing::Ps384)) => strength >= 24,
+                (Self::Ps512(_), Algorithm::Signing(jose_jwa::Signing::Ps512)) => strength >= 32,
+                (_, Algorithm::KeyManagement(jose_jwa::KeyManagement::RsaOaep)) => strength >= 16,
+                (_, Algorithm::KeyManagement(jose_jwa::KeyManagement::RsaOaep256)) => {
+                    strength >= 16
+                }
+                _ => false,
+            }
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<&RsaSigningKey> for crate::Rsa {
+    fn from(key: &RsaSigningKey) -> Self {
+        use jose_jwa::crypto::RsaPrivateComponents;
+        let (n, e, d, opt) = match key {
+            RsaSigningKey::Rs256(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+            RsaSigningKey::Rs384(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+            RsaSigningKey::Rs512(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+            RsaSigningKey::Ps256(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+            RsaSigningKey::Ps384(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+            RsaSigningKey::Ps512(k) => {
+                let opt = k.p().zip(k.q()).zip(k.dp()).zip(k.dq()).zip(k.qi()).map(
+                    |((((p, q), dp), dq), qi)| crate::RsaOptional {
+                        p,
+                        q,
+                        dp,
+                        dq,
+                        qi,
+                        oth: alloc::vec::Vec::new(),
+                    },
+                );
+                (k.n(), k.e(), k.d(), opt)
+            }
+        };
+        Self {
+            n: n.into(),
+            e: e.into(),
+            prv: Some(crate::RsaPrivate { d: d.into(), opt }),
+        }
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<RsaSigningKey> for crate::Rsa {
+    fn from(key: RsaSigningKey) -> Self {
+        (&key).into()
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl TryFrom<&crate::Rsa> for RsaSigningKey {
+    type Error = super::Error;
+
+    fn try_from(value: &crate::Rsa) -> Result<Self, Self::Error> {
+        use rsa::RsaPrivateKey;
+
+        if value.prv.is_none() {
+            return Err(super::Error::NotPrivate);
+        }
+
+        // Convert JWK Rsa to RsaPrivateKey
+        let private_key: RsaPrivateKey = value.try_into()?;
+
+        // Construct signing keys directly from the private key
+        // We use RS256 (PKCS#1 v1.5 with SHA-256) as the default
+        Ok(Self::Rs256(Rs256SigningKey::new(private_key)))
+    }
+}
+
 /// RSA verifying key enum wrapping all algorithm-specific types.
 #[cfg(feature = "rsa")]
 pub enum RsaVerifyingKey {
@@ -45,6 +196,77 @@ pub enum RsaVerifyingKey {
     Ps384(Ps384VerifyingKey),
     /// PS512 verifying key
     Ps512(Ps512VerifyingKey),
+}
+
+#[cfg(feature = "rsa")]
+impl KeyInfo for RsaVerifyingKey {
+    fn strength(&self) -> usize {
+        match self {
+            Self::Rs256(k) => k.n().len() / 16,
+            Self::Rs384(k) => k.n().len() / 16,
+            Self::Rs512(k) => k.n().len() / 16,
+            Self::Ps256(k) => k.n().len() / 16,
+            Self::Ps384(k) => k.n().len() / 16,
+            Self::Ps512(k) => k.n().len() / 16,
+        }
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        self.strength() >= 16
+            && match (self, algo) {
+                (Self::Rs256(_), Algorithm::Signing(jose_jwa::Signing::Rs256)) => true,
+                (Self::Rs384(_), Algorithm::Signing(jose_jwa::Signing::Rs384)) => true,
+                (Self::Rs512(_), Algorithm::Signing(jose_jwa::Signing::Rs512)) => true,
+                (Self::Ps256(_), Algorithm::Signing(jose_jwa::Signing::Ps256)) => true,
+                (Self::Ps384(_), Algorithm::Signing(jose_jwa::Signing::Ps384)) => true,
+                (Self::Ps512(_), Algorithm::Signing(jose_jwa::Signing::Ps512)) => true,
+                (_, Algorithm::KeyManagement(jose_jwa::KeyManagement::RsaOaep)) => true,
+                (_, Algorithm::KeyManagement(jose_jwa::KeyManagement::RsaOaep256)) => true,
+                _ => false,
+            }
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<&RsaVerifyingKey> for crate::Rsa {
+    fn from(key: &RsaVerifyingKey) -> Self {
+        let (n, e) = match key {
+            RsaVerifyingKey::Rs256(k) => (k.n(), k.e()),
+            RsaVerifyingKey::Rs384(k) => (k.n(), k.e()),
+            RsaVerifyingKey::Rs512(k) => (k.n(), k.e()),
+            RsaVerifyingKey::Ps256(k) => (k.n(), k.e()),
+            RsaVerifyingKey::Ps384(k) => (k.n(), k.e()),
+            RsaVerifyingKey::Ps512(k) => (k.n(), k.e()),
+        };
+        Self {
+            n: n.into(),
+            e: e.into(),
+            prv: None,
+        }
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl From<RsaVerifyingKey> for crate::Rsa {
+    fn from(key: RsaVerifyingKey) -> Self {
+        (&key).into()
+    }
+}
+
+#[cfg(feature = "rsa")]
+impl TryFrom<&crate::Rsa> for RsaVerifyingKey {
+    type Error = super::Error;
+
+    fn try_from(value: &crate::Rsa) -> Result<Self, Self::Error> {
+        use rsa::RsaPublicKey;
+
+        // Convert JWK Rsa to RsaPublicKey
+        let public_key: RsaPublicKey = value.try_into()?;
+
+        // Construct a verifying key directly from the public key
+        // We use RS256 (PKCS#1 v1.5 with SHA-256) as the default
+        Ok(Self::Rs256(Rs256VerifyingKey::new(public_key)))
+    }
 }
 
 /// A fully parsed Key that mimics the runtime behavior of a JWK.

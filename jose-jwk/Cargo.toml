@@ -20,7 +20,12 @@ rust-version.workspace = true
 
 [features]
 default = ["crypto"]
-crypto = ["jose-jwa/p256", "jose-jwa/p384", "jose-jwa/p521", "jose-jwa/k256", "jose-jwa/rsa"]
+crypto = ["p256", "p384", "p521", "k256", "rsa"]
+k256 = ["dep:k256", "jose-jwa/k256"]
+p256 = ["dep:p256", "jose-jwa/p256"]
+p384 = ["dep:p384", "jose-jwa/p384"]
+p521 = ["dep:p521", "jose-jwa/p521"]
+rsa = ["dep:rsa", "jose-jwa/rsa"]
 legacy = ["dep:base64ct", "dep:elliptic-curve", "dep:serde_json", "dep:serdect", "dep:subtle"]
 thumbprint = ["dep:sha2"]
 
@@ -31,6 +36,11 @@ serde = { workspace = true }
 zeroize = { workspace = true }
 
 # optional dependencies
+k256 = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
+p384 = { workspace = true, optional = true }
+p521 = { workspace = true, optional = true }
+rsa = { workspace = true, optional = true }
 sha2 = { version = "0.11.0-rc.2", default-features = false, optional = true }
 url = { version = "2.4.1", default-features = false, optional = true, features = ["serde"] }
 

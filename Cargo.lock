@@ -559,7 +559,6 @@ dependencies = [
  "hmac",
  "jose-b64",
  "k256",
- "one-step-kdf",
  "p256",
  "p384",
  "p521",
@@ -599,6 +598,11 @@ dependencies = [
  "elliptic-curve",
  "jose-b64",
  "jose-jwa",
+ "k256",
+ "p256",
+ "p384",
+ "p521",
+ "rsa",
  "serde",
  "serde_json",
  "serdect 0.2.0",
@@ -699,15 +703,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "one-step-kdf"
-version = "0.1.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd4dc68a57d9494825faa914644f4ec754f23366f51b4f09d8feea37c64808db"
-dependencies = [
- "digest",
 ]
 
 [[package]]

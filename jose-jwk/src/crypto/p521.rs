@@ -3,9 +3,7 @@
 
 #![cfg(feature = "p521")]
 
-use p521::elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
-use p521::{FieldBytes, PublicKey, Sec1Point, SecretKey};
-
+use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey};
 use jose_jwa::{
     Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing::Es512,
 };
@@ -14,12 +12,7 @@ use super::Error;
 use super::KeyInfo;
 use crate::{Ec, EcCurves};
 
-#[cfg(feature = "legacy")]
-impl crate::legacy::JwkParameters for p521::NistP521 {
-    const CRV: &'static str = "P-521";
-}
-
-impl KeyInfo for PublicKey {
+impl KeyInfo for EcdsaVerifyingKey<p521::NistP521> {
     fn strength(&self) -> usize {
         32
     }
@@ -38,7 +31,7 @@ impl KeyInfo for PublicKey {
     }
 }
 
-impl KeyInfo for SecretKey {
+impl KeyInfo for EcdsaSigningKey<p521::NistP521> {
     fn strength(&self) -> usize {
         32
     }
@@ -57,26 +50,24 @@ impl KeyInfo for SecretKey {
     }
 }
 
-impl From<&PublicKey> for Ec {
-    fn from(pk: &PublicKey) -> Self {
-        let ep = pk.to_sec1_point(false);
-
+impl From<&EcdsaVerifyingKey<p521::NistP521>> for Ec {
+    fn from(pk: &EcdsaVerifyingKey<p521::NistP521>) -> Self {
         Self {
             crv: EcCurves::P521,
-            x: ep.x().expect("unreachable").to_vec().into(),
-            y: ep.y().expect("unreachable").to_vec().into(),
+            x: pk.x(),
+            y: pk.y(),
             d: None,
         }
     }
 }
 
-impl From<PublicKey> for Ec {
-    fn from(sk: PublicKey) -> Self {
-        (&sk).into()
+impl From<EcdsaVerifyingKey<p521::NistP521>> for Ec {
+    fn from(pk: EcdsaVerifyingKey<p521::NistP521>) -> Self {
+        (&pk).into()
     }
 }
 
-impl TryFrom<&Ec> for PublicKey {
+impl TryFrom<&Ec> for EcdsaVerifyingKey<p521::NistP521> {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -84,25 +75,17 @@ impl TryFrom<&Ec> for PublicKey {
             return Err(Error::AlgMismatch);
         }
 
-        let mut x = FieldBytes::default();
-        if value.x.len() != x.len() {
-            return Err(Error::Invalid);
-        }
+        // Build uncompressed SEC1 point: 0x04 || x || y
+        let mut sec1 = alloc::vec::Vec::new();
+        sec1.push(0x04u8);
+        sec1.extend_from_slice(&value.x);
+        sec1.extend_from_slice(&value.y);
 
-        let mut y = FieldBytes::default();
-        if value.y.len() != y.len() {
-            return Err(Error::Invalid);
-        }
-
-        x.copy_from_slice(&value.x);
-        y.copy_from_slice(&value.y);
-
-        let ep = Sec1Point::from_affine_coordinates(&x, &y, false);
-        Option::from(Self::from_sec1_point(&ep)).ok_or(Error::Invalid)
+        Self::from_sec1_bytes(&sec1).map_err(|_| Error::Invalid)
     }
 }
 
-impl TryFrom<Ec> for PublicKey {
+impl TryFrom<Ec> for EcdsaVerifyingKey<p521::NistP521> {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {
@@ -110,21 +93,21 @@ impl TryFrom<Ec> for PublicKey {
     }
 }
 
-impl From<&SecretKey> for Ec {
-    fn from(sk: &SecretKey) -> Self {
-        let mut key: Self = sk.public_key().into();
-        key.d = Some(sk.to_bytes().to_vec().into());
+impl From<&EcdsaSigningKey<p521::NistP521>> for Ec {
+    fn from(sk: &EcdsaSigningKey<p521::NistP521>) -> Self {
+        let mut key: Self = sk.verifying_key().into();
+        key.d = Some(sk.d().into());
         key
     }
 }
 
-impl From<SecretKey> for Ec {
-    fn from(sk: SecretKey) -> Self {
+impl From<EcdsaSigningKey<p521::NistP521>> for Ec {
+    fn from(sk: EcdsaSigningKey<p521::NistP521>) -> Self {
         (&sk).into()
     }
 }
 
-impl TryFrom<&Ec> for SecretKey {
+impl TryFrom<&Ec> for EcdsaSigningKey<p521::NistP521> {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -133,14 +116,14 @@ impl TryFrom<&Ec> for SecretKey {
         }
 
         if let Some(d) = value.d.as_ref() {
-            return Self::from_slice(d).map_err(|_| Error::Invalid);
+            return Self::from_bytes(d.as_ref()).map_err(|_| Error::Invalid);
         }
 
         Err(Error::NotPrivate)
     }
 }
 
-impl TryFrom<Ec> for SecretKey {
+impl TryFrom<Ec> for EcdsaSigningKey<p521::NistP521> {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {
