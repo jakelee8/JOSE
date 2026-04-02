@@ -2,7 +2,7 @@ use core::error::Error;
 
 use jose_b64::stream::Update;
 
-use crate::Signing;
+use crate::crypto::SigningKeyInfo;
 
 /// A signature verification key.
 ///
@@ -13,12 +13,9 @@ use crate::Signing;
 /// 3. Call `Verifier::finish()` with the signature to verify
 ///
 /// A one-shot `verify()` method is provided for convenience.
-pub trait VerifyingKey {
+pub trait VerifyingKey: SigningKeyInfo {
     /// The error type returned when creating a verifier.
     type VerifierError: Error;
-
-    /// Returns the signing algorithm identifier.
-    fn alg(&self) -> Signing;
 
     /// The verifier state type.
     type Verifier<'a>: Verifier

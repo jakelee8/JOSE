@@ -13,7 +13,7 @@ use jose_b64::serde::{Bytes, Secret};
 use rand_core::TryCryptoRng;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::Encryption;
+use crate::crypto::EncryptionKeyInfo;
 
 #[cfg(feature = "aes-cbc-hmac")]
 pub use self::aes_cbc_hmac::*;
@@ -25,12 +25,9 @@ pub use self::aes_gcm::*;
 /// This trait is implemented by keys that can perform content encryption
 /// for JWE. Encryption is done in one shot (not streaming) since AEAD
 /// algorithms require the full plaintext.
-pub trait EncryptionKey {
+pub trait EncryptionKey: EncryptionKeyInfo {
     /// The error type returned by encryption operations.
     type Error: core::error::Error;
-
-    /// Returns the content encryption algorithm identifier.
-    fn enc(&self) -> Encryption;
 
     /// Return the key bytes (JWK `k` parameter).
     fn k(&self) -> &Secret;

@@ -16,7 +16,7 @@ use jose_b64::serde::Secret;
 use rand_core::TryCryptoRng;
 
 use super::{Encrypted, EncryptionKey};
-use crate::crypto::private::EncryptionAlgorithm;
+use crate::crypto::EncryptionKeyInfo;
 use crate::{Encryption, Error};
 
 /// AES-128-GCM content encryption key (128-bit key).
@@ -38,10 +38,27 @@ pub struct AesGcmKey<A> {
     _alg: PhantomData<A>,
 }
 
+impl EncryptionKeyInfo for AesGcmKey<aes::Aes128> {
+    fn enc(&self) -> Encryption {
+        Encryption::A128Gcm
+    }
+}
+
+impl EncryptionKeyInfo for AesGcmKey<aes::Aes192> {
+    fn enc(&self) -> Encryption {
+        Encryption::A192Gcm
+    }
+}
+
+impl EncryptionKeyInfo for AesGcmKey<aes::Aes256> {
+    fn enc(&self) -> Encryption {
+        Encryption::A256Gcm
+    }
+}
+
 impl<A> AesGcmKey<A>
 where
     A: KeySizeUser,
-    Self: EncryptionAlgorithm,
 {
     /// Create an AES-GCM key from raw bytes.
     ///
@@ -74,13 +91,9 @@ impl<A> EncryptionKey for AesGcmKey<A>
 where
     A: KeySizeUser,
     AesGcm<A, U12>: KeyInit + AeadInOut,
-    Self: EncryptionAlgorithm,
+    Self: EncryptionKeyInfo,
 {
     type Error = Error;
-
-    fn enc(&self) -> Encryption {
-        Self::ENC
-    }
 
     fn k(&self) -> &Secret {
         &self.k
@@ -135,16 +148,4 @@ where
 
         Ok(Secret::from(plaintext))
     }
-}
-
-impl EncryptionAlgorithm for AesGcmKey<aes::Aes128> {
-    const ENC: Encryption = Encryption::A128Gcm;
-}
-
-impl EncryptionAlgorithm for AesGcmKey<aes::Aes192> {
-    const ENC: Encryption = Encryption::A192Gcm;
-}
-
-impl EncryptionAlgorithm for AesGcmKey<aes::Aes256> {
-    const ENC: Encryption = Encryption::A256Gcm;
 }

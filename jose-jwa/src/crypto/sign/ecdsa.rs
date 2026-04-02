@@ -14,7 +14,9 @@ use core::convert::Infallible;
 use digest::Digest;
 use ecdsa::elliptic_curve::array::ArraySize;
 use ecdsa::elliptic_curve::ops::Invert;
-use ecdsa::elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
+use ecdsa::elliptic_curve::point::AffineCoordinates;
+use ecdsa::elliptic_curve::sec1::ToSec1Point;
+use ecdsa::elliptic_curve::sec1::{FromSec1Point, ModulusSize};
 use ecdsa::elliptic_curve::subtle::CtOption;
 use ecdsa::elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
 use ecdsa::hazmat::DigestAlgorithm;
@@ -23,9 +25,8 @@ use ecdsa::{EcdsaCurve, Signature, SignatureSize};
 use jose_b64::serde::{Bytes, Secret};
 use jose_b64::stream::Update;
 
-use crate::Error;
-use crate::Signing;
-use crate::crypto::{Signer, SigningKey, Verifier, VerifyingKey};
+use crate::crypto::{Signer, SigningKey, SigningKeyInfo, Verifier, VerifyingKey};
+use crate::{Error, Signing};
 
 /// ES256 (ECDSA + P-256 + SHA-256) signing key.
 #[cfg(feature = "p256")]
@@ -55,40 +56,6 @@ pub type Es256KSigningKey = EcdsaSigningKey<k256::Secp256k1>;
 #[cfg(feature = "k256")]
 pub type Es256KVerifyingKey = EcdsaVerifyingKey<k256::Secp256k1>;
 
-/// Trait for deriving the signing algorithm from the curve type at compile time.
-pub trait EcdsaCurveAlg {
-    /// Returns the signing algorithm corresponding to this curve.
-    fn alg() -> Signing;
-}
-
-#[cfg(feature = "p256")]
-impl EcdsaCurveAlg for p256::NistP256 {
-    fn alg() -> Signing {
-        Signing::Es256
-    }
-}
-
-#[cfg(feature = "p384")]
-impl EcdsaCurveAlg for p384::NistP384 {
-    fn alg() -> Signing {
-        Signing::Es384
-    }
-}
-
-#[cfg(feature = "p521")]
-impl EcdsaCurveAlg for p521::NistP521 {
-    fn alg() -> Signing {
-        Signing::Es512
-    }
-}
-
-#[cfg(feature = "k256")]
-impl EcdsaCurveAlg for k256::Secp256k1 {
-    fn alg() -> Signing {
-        Signing::Es256K
-    }
-}
-
 /// An ECDSA signing key for creating digital signatures.
 ///
 /// This type wraps an ECDSA signing key and implements the [`SigningKey`] trait.
@@ -99,7 +66,7 @@ pub struct EcdsaSigningKey<C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> {
 
 impl<C> EcdsaSigningKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -122,13 +89,43 @@ where
     }
 }
 
+#[cfg(feature = "p256")]
+impl SigningKeyInfo for EcdsaSigningKey<p256::NistP256> {
+    fn sig(&self) -> Signing {
+        Signing::Es256
+    }
+}
+
+#[cfg(feature = "p384")]
+impl SigningKeyInfo for EcdsaSigningKey<p384::NistP384> {
+    fn sig(&self) -> Signing {
+        Signing::Es384
+    }
+}
+
+#[cfg(feature = "p521")]
+impl SigningKeyInfo for EcdsaSigningKey<p521::NistP521> {
+    fn sig(&self) -> Signing {
+        Signing::Es512
+    }
+}
+
+#[cfg(feature = "k256")]
+impl SigningKeyInfo for EcdsaSigningKey<k256::Secp256k1> {
+    fn sig(&self) -> Signing {
+        Signing::Es256K
+    }
+}
+
 impl<C> SigningKey for EcdsaSigningKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>>,
     SignatureSize<C>: ArraySize,
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
+    Self: SigningKeyInfo,
+    EcdsaVerifyingKey<C>: SigningKeyInfo,
 {
     type Signer<'a>
         = EcdsaSigner<'a, C>
@@ -136,10 +133,6 @@ where
         Self: 'a;
     type SignerError = Error;
     type VerifyingKey = EcdsaVerifyingKey<C>;
-
-    fn alg(&self) -> Signing {
-        C::alg()
-    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError> {
         Ok(EcdsaSigner {
@@ -163,18 +156,15 @@ where
 
 impl<C> VerifyingKey for EcdsaSigningKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
+    Self: SigningKeyInfo,
 {
     type Verifier<'a>
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
     type VerifierError = Error;
-
-    fn alg(&self) -> Signing {
-        C::alg()
-    }
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(EcdsaVerifier {
@@ -225,7 +215,7 @@ where
 
 impl<C> From<EcdsaSigningKey<C>> for EcdsaVerifyingKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -236,7 +226,7 @@ where
 
 impl<C> From<&EcdsaSigningKey<C>> for EcdsaVerifyingKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -262,9 +252,37 @@ pub struct EcdsaVerifyingKey<C: EcdsaCurve + DigestAlgorithm + CurveArithmetic> 
     key: ecdsa::VerifyingKey<C>,
 }
 
+#[cfg(feature = "p256")]
+impl SigningKeyInfo for EcdsaVerifyingKey<p256::NistP256> {
+    fn sig(&self) -> Signing {
+        Signing::Es256
+    }
+}
+
+#[cfg(feature = "p384")]
+impl SigningKeyInfo for EcdsaVerifyingKey<p384::NistP384> {
+    fn sig(&self) -> Signing {
+        Signing::Es384
+    }
+}
+
+#[cfg(feature = "p521")]
+impl SigningKeyInfo for EcdsaVerifyingKey<p521::NistP521> {
+    fn sig(&self) -> Signing {
+        Signing::Es512
+    }
+}
+
+#[cfg(feature = "k256")]
+impl SigningKeyInfo for EcdsaVerifyingKey<k256::Secp256k1> {
+    fn sig(&self) -> Signing {
+        Signing::Es256K
+    }
+}
+
 impl<C> EcdsaVerifyingKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
     FieldBytesSize<C>: ModulusSize,
 {
@@ -277,41 +295,26 @@ where
 
     /// Return the x-coordinate (JWK `x` parameter).
     pub fn x(&self) -> Bytes {
-        let point = self.key.to_sec1_point(false);
-        point
-            .x()
-            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has x"))
-            .as_slice()
-            .to_vec()
-            .into()
+        self.key.as_affine().x().to_vec().into()
     }
 
     /// Return the y-coordinate (JWK `y` parameter).
     pub fn y(&self) -> Bytes {
-        let point = self.key.to_sec1_point(false);
-        point
-            .y()
-            .unwrap_or_else(|| unreachable!("uncompressed SEC1 point always has y"))
-            .as_slice()
-            .to_vec()
-            .into()
+        self.key.as_affine().y().to_vec().into()
     }
 }
 
 impl<C> VerifyingKey for EcdsaVerifyingKey<C>
 where
-    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic + EcdsaCurveAlg,
+    C: EcdsaCurve + DigestAlgorithm + CurveArithmetic,
     SignatureSize<C>: ArraySize,
+    Self: SigningKeyInfo,
 {
     type Verifier<'a>
         = EcdsaVerifier<'a, C>
     where
         Self: 'a;
     type VerifierError = Error;
-
-    fn alg(&self) -> Signing {
-        C::alg()
-    }
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(EcdsaVerifier {
@@ -361,7 +364,7 @@ where
 {
     type SignError = Error;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
+    fn finish(self) -> Result<Bytes, Self::SignError> {
         let hash = self.digest.finalize();
         let sig: Signature<C> = self
             .key
@@ -400,7 +403,7 @@ where
 {
     type VerifyError = Error;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::VerifyError> {
         let hash = self.digest.finalize();
         let sig = Signature::<C>::from_slice(signature.as_ref()).map_err(|_| Error::InvalidKey)?;
         self.key

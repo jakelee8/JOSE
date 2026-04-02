@@ -15,8 +15,7 @@ use sha2::{Digest, Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::Encrypted;
-use crate::crypto::EncryptionKey;
-use crate::crypto::private::EncryptionAlgorithm;
+use crate::crypto::{EncryptionKey, EncryptionKeyInfo};
 use crate::{Encryption, Error};
 
 /// Type alias for A128CBC-HS256 keys (AES-128 with SHA-256).
@@ -45,7 +44,6 @@ impl<A, D> AesCbcHmacKey<A, D>
 where
     A: KeySizeUser,
     D: EagerHash,
-    Self: EncryptionAlgorithm,
 {
     /// Create an AES-CBC-HMAC key from raw bytes.
     ///
@@ -72,19 +70,32 @@ where
     }
 }
 
+impl EncryptionKeyInfo for AesCbcHmacKey<Aes128, Sha256> {
+    fn enc(&self) -> Encryption {
+        Encryption::A128CbcHs256
+    }
+}
+
+impl EncryptionKeyInfo for AesCbcHmacKey<Aes192, Sha384> {
+    fn enc(&self) -> Encryption {
+        Encryption::A192CbcHs384
+    }
+}
+
+impl EncryptionKeyInfo for AesCbcHmacKey<Aes256, Sha512> {
+    fn enc(&self) -> Encryption {
+        Encryption::A256CbcHs512
+    }
+}
+
 impl<A, D> EncryptionKey for AesCbcHmacKey<A, D>
 where
     A: BlockCipherEncrypt + BlockCipherDecrypt + KeyInit,
     D: EagerHash + Digest,
     Hmac<D>: Mac + KeyInit,
-    Self: EncryptionAlgorithm,
+    Self: EncryptionKeyInfo,
 {
     type Error = Error;
-
-    /// Get the content encryption algorithm.
-    fn enc(&self) -> Encryption {
-        Self::ENC
-    }
 
     /// Return the key bytes (JWK `k` parameter).
     fn k(&self) -> &Secret {
@@ -193,18 +204,6 @@ where
 
         Ok(plaintext.into())
     }
-}
-
-impl EncryptionAlgorithm for AesCbcHmacKey<Aes128, Sha256> {
-    const ENC: Encryption = Encryption::A128CbcHs256;
-}
-
-impl EncryptionAlgorithm for AesCbcHmacKey<Aes192, Sha384> {
-    const ENC: Encryption = Encryption::A192CbcHs384;
-}
-
-impl EncryptionAlgorithm for AesCbcHmacKey<Aes256, Sha512> {
-    const ENC: Encryption = Encryption::A256CbcHs512;
 }
 
 #[cfg(test)]

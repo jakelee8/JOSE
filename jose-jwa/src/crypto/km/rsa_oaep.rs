@@ -108,39 +108,27 @@ impl<D> RsaOaepPrivateKey<D> {
 
     /// Get the first prime factor `p` if available.
     pub fn p(&self) -> Option<Bytes> {
-        self.key
-            .primes()
-            .first()
-            .map(|p| p.to_be_bytes_trimmed_vartime().into())
+        self.key.primes().first().map(|p| p.to_be_bytes().into())
     }
 
     /// Get the second prime factor `q` if available.
     pub fn q(&self) -> Option<Bytes> {
-        self.key
-            .primes()
-            .get(1)
-            .map(|q| q.to_be_bytes_trimmed_vartime().into())
+        self.key.primes().get(1).map(|q| q.to_be_bytes().into())
     }
 
     /// Get `d mod (p-1)` (CRT coefficient) if available.
     pub fn dp(&self) -> Option<Bytes> {
-        self.key
-            .dp()
-            .map(|dp| dp.to_be_bytes_trimmed_vartime().into())
+        self.key.dp().map(|dp| dp.to_be_bytes().into())
     }
 
     /// Get `d mod (q-1)` (CRT coefficient) if available.
     pub fn dq(&self) -> Option<Bytes> {
-        self.key
-            .dq()
-            .map(|dq| dq.to_be_bytes_trimmed_vartime().into())
+        self.key.dq().map(|dq| dq.to_be_bytes().into())
     }
 
     /// Get `q^-1 mod p` (CRT coefficient) if available.
     pub fn qi(&self) -> Option<Bytes> {
-        self.key
-            .qinv()
-            .map(|qi| qi.retrieve().to_be_bytes_trimmed_vartime().into())
+        self.key.qinv().map(|qi| qi.retrieve().to_be_bytes().into())
     }
 }
 
@@ -225,12 +213,12 @@ impl<D> RsaOaepPublicKey<D> {
 
     /// Get the modulus `n` as an unsigned big-endian octet sequence.
     pub fn n(&self) -> Bytes {
-        self.key.n().to_be_bytes().into()
+        self.key.n().to_be_bytes_trimmed_vartime().into()
     }
 
     /// Get the public exponent `e` as an unsigned big-endian octet sequence.
     pub fn e(&self) -> Bytes {
-        self.key.e().to_be_bytes().into()
+        self.key.e().to_be_bytes_trimmed_vartime().into()
     }
 }
 

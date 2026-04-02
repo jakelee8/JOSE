@@ -3,8 +3,6 @@ use core::error::Error;
 use jose_b64::serde::Bytes;
 use jose_b64::stream::Update;
 
-use crate::Signing;
-
 use super::VerifyingKey;
 
 /// A signature creation key.
@@ -27,9 +25,6 @@ pub trait SigningKey: VerifyingKey {
 
     /// The verifying key type.
     type VerifyingKey: VerifyingKey;
-
-    /// Returns the signing algorithm identifier.
-    fn alg(&self) -> Signing;
 
     /// Begin the signature creation process.
     ///

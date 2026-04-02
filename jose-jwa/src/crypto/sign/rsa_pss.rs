@@ -11,9 +11,8 @@ use rsa::{RsaPrivateKey, RsaPublicKey, pss};
 use sha2::digest::{Digest, FixedOutputReset, OutputSizeUser};
 use sha2::{Sha256, Sha384, Sha512};
 
-use crate::crypto::private::SigningAlgorithm;
 use crate::crypto::{
-    RsaComponents, RsaPrivateComponents, Signer, SigningKey, Verifier, VerifyingKey,
+    RsaComponents, RsaPrivateComponents, Signer, SigningKey, SigningKeyInfo, Verifier, VerifyingKey,
 };
 use crate::{Error, Signing};
 
@@ -37,6 +36,24 @@ pub type Ps512VerifyingKey = RsaPssVerifyingKey<Sha512>;
 pub struct RsaPssSigningKey<D> {
     key: RsaPrivateKey,
     _digest: PhantomData<D>,
+}
+
+impl SigningKeyInfo for RsaPssSigningKey<Sha256> {
+    fn sig(&self) -> Signing {
+        Signing::Ps256
+    }
+}
+
+impl SigningKeyInfo for RsaPssSigningKey<Sha384> {
+    fn sig(&self) -> Signing {
+        Signing::Ps384
+    }
+}
+
+impl SigningKeyInfo for RsaPssSigningKey<Sha512> {
+    fn sig(&self) -> Signing {
+        Signing::Ps512
+    }
 }
 
 impl<D> RsaPssSigningKey<D>
@@ -103,8 +120,8 @@ impl<D> RsaPrivateComponents for RsaPssSigningKey<D> {
 impl<D> SigningKey for RsaPssSigningKey<D>
 where
     D: Digest + FixedOutputReset,
-    Self: SigningAlgorithm,
-    RsaPssVerifyingKey<D>: SigningAlgorithm,
+    Self: SigningKeyInfo,
+    RsaPssVerifyingKey<D>: SigningKeyInfo,
 {
     type Signer<'a>
         = RsaPssSigner<'a, D>
@@ -112,10 +129,6 @@ where
         Self: 'a;
     type SignerError = Error;
     type VerifyingKey = RsaPssVerifyingKey<D>;
-
-    fn alg(&self) -> Signing {
-        Self::ALG
-    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError> {
         Ok(RsaPssSigner {
@@ -142,17 +155,13 @@ where
 impl<D> VerifyingKey for RsaPssSigningKey<D>
 where
     D: Digest + FixedOutputReset,
-    Self: SigningAlgorithm,
+    Self: SigningKeyInfo,
 {
     type Verifier<'a>
         = RsaPssVerifier<'a, D>
     where
         Self: 'a;
     type VerifierError = Error;
-
-    fn alg(&self) -> Signing {
-        Self::ALG
-    }
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(RsaPssVerifier {
@@ -171,18 +180,6 @@ where
         verifier.update(data).expect("infallible");
         verifier.finish(signature)
     }
-}
-
-impl SigningAlgorithm for RsaPssSigningKey<Sha256> {
-    const ALG: Signing = Signing::Ps256;
-}
-
-impl SigningAlgorithm for RsaPssSigningKey<Sha384> {
-    const ALG: Signing = Signing::Ps384;
-}
-
-impl SigningAlgorithm for RsaPssSigningKey<Sha512> {
-    const ALG: Signing = Signing::Ps512;
 }
 
 /// RSA-PSS verifying key.
@@ -206,17 +203,13 @@ impl<D> RsaComponents for RsaPssVerifyingKey<D> {
 impl<D> VerifyingKey for RsaPssVerifyingKey<D>
 where
     D: Digest + FixedOutputReset,
-    Self: SigningAlgorithm,
+    Self: SigningKeyInfo,
 {
     type Verifier<'a>
         = RsaPssVerifier<'a, D>
     where
         Self: 'a;
     type VerifierError = Error;
-
-    fn alg(&self) -> Signing {
-        Self::ALG
-    }
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         Ok(RsaPssVerifier {
@@ -250,8 +243,8 @@ impl<D> From<RsaPublicKey> for RsaPssVerifyingKey<D> {
 impl<D> From<RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
 where
     D: Digest + FixedOutputReset,
-    RsaPssSigningKey<D>: SigningAlgorithm,
-    RsaPssVerifyingKey<D>: SigningAlgorithm,
+    RsaPssSigningKey<D>: SigningKeyInfo,
+    RsaPssVerifyingKey<D>: SigningKeyInfo,
 {
     fn from(key: RsaPssSigningKey<D>) -> Self {
         key.verifying_key()
@@ -261,8 +254,8 @@ where
 impl<D> From<&RsaPssSigningKey<D>> for RsaPssVerifyingKey<D>
 where
     D: Digest + FixedOutputReset,
-    RsaPssSigningKey<D>: SigningAlgorithm,
-    RsaPssVerifyingKey<D>: SigningAlgorithm,
+    RsaPssSigningKey<D>: SigningKeyInfo,
+    RsaPssVerifyingKey<D>: SigningKeyInfo,
 {
     fn from(key: &RsaPssSigningKey<D>) -> Self {
         key.verifying_key()
@@ -294,7 +287,7 @@ where
 {
     type SignError = Error;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
+    fn finish(self) -> Result<Bytes, Self::SignError> {
         let hash = self.digest.finalize().to_vec();
 
         let key = pss::SigningKey::<D>::from(self.key.clone());
@@ -309,6 +302,24 @@ pub struct RsaPssVerifier<'a, D> {
     digest: D,
     key: &'a RsaPublicKey,
     _digest: PhantomData<D>,
+}
+
+impl SigningKeyInfo for RsaPssVerifyingKey<Sha256> {
+    fn sig(&self) -> Signing {
+        Signing::Ps256
+    }
+}
+
+impl SigningKeyInfo for RsaPssVerifyingKey<Sha384> {
+    fn sig(&self) -> Signing {
+        Signing::Ps384
+    }
+}
+
+impl SigningKeyInfo for RsaPssVerifyingKey<Sha512> {
+    fn sig(&self) -> Signing {
+        Signing::Ps512
+    }
 }
 
 impl<'a, D> Update for RsaPssVerifier<'a, D>
@@ -329,7 +340,7 @@ where
 {
     type VerifyError = Error;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::VerifyError> {
         let hash = self.digest.finalize().to_vec();
         let sig = signature.as_ref();
 
@@ -338,16 +349,4 @@ where
 
         key.verify_prehash(&hash, &sig).map_err(|_| Error::Verify)
     }
-}
-
-impl SigningAlgorithm for RsaPssVerifyingKey<Sha256> {
-    const ALG: Signing = Signing::Ps256;
-}
-
-impl SigningAlgorithm for RsaPssVerifyingKey<Sha384> {
-    const ALG: Signing = Signing::Ps384;
-}
-
-impl SigningAlgorithm for RsaPssVerifyingKey<Sha512> {
-    const ALG: Signing = Signing::Ps512;
 }

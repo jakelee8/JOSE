@@ -14,7 +14,7 @@ use sha2::{Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::{Signer, SigningKey, Verifier, VerifyingKey};
-use crate::crypto::private::SigningAlgorithm;
+use crate::crypto::SigningKeyInfo;
 use crate::{Error, Signing};
 
 /// HS256 (HMAC + SHA-256) signer
@@ -76,10 +76,28 @@ where
     }
 }
 
+impl SigningKeyInfo for HmacKey<Hmac<Sha256>> {
+    fn sig(&self) -> Signing {
+        Signing::Hs256
+    }
+}
+
+impl SigningKeyInfo for HmacKey<Hmac<Sha384>> {
+    fn sig(&self) -> Signing {
+        Signing::Hs384
+    }
+}
+
+impl SigningKeyInfo for HmacKey<Hmac<Sha512>> {
+    fn sig(&self) -> Signing {
+        Signing::Hs512
+    }
+}
+
 impl<D> SigningKey for HmacKey<D>
 where
     D: EagerHash + TryKeyInit,
-    Self: SigningAlgorithm,
+    Self: SigningKeyInfo,
 {
     type Signer<'a>
         = HmacState<D>
@@ -88,10 +106,6 @@ where
 
     type SignerError = Error;
     type VerifyingKey = Self;
-
-    fn alg(&self) -> Signing {
-        Self::ALG
-    }
 
     fn signer(&self) -> Result<Self::Signer<'_>, Self::SignerError> {
         let hmac = D::new_from_slice(&self.k)?;
@@ -115,17 +129,13 @@ where
 impl<D> VerifyingKey for HmacKey<D>
 where
     D: EagerHash + TryKeyInit,
-    Self: SigningAlgorithm,
+    Self: SigningKeyInfo,
 {
     type Verifier<'a>
         = HmacState<D>
     where
         Self: 'a;
     type VerifierError = Error;
-
-    fn alg(&self) -> Signing {
-        Self::ALG
-    }
 
     fn verifier(&self) -> Result<Self::Verifier<'_>, Self::VerifierError> {
         let hmac = D::new_from_slice(&self.k)?;
@@ -170,7 +180,7 @@ where
 {
     type SignError = Infallible;
 
-    fn finish(self) -> Result<Bytes, <Self as Signer>::SignError> {
+    fn finish(self) -> Result<Bytes, Self::SignError> {
         Ok(self.hmac.finalize().to_vec().into())
     }
 }
@@ -181,7 +191,7 @@ where
 {
     type VerifyError = Error;
 
-    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), <Self as Verifier>::VerifyError> {
+    fn finish(self, signature: impl AsRef<[u8]>) -> Result<(), Self::VerifyError> {
         if self
             .hmac
             .finalize()
@@ -206,16 +216,4 @@ impl From<InvalidLength> for Error {
     fn from(_: InvalidLength) -> Self {
         Error::InvalidKey
     }
-}
-
-impl SigningAlgorithm for HmacKey<Hmac<Sha256>> {
-    const ALG: Signing = Signing::Hs256;
-}
-
-impl SigningAlgorithm for HmacKey<Hmac<Sha384>> {
-    const ALG: Signing = Signing::Hs384;
-}
-
-impl SigningAlgorithm for HmacKey<Hmac<Sha512>> {
-    const ALG: Signing = Signing::Hs512;
 }

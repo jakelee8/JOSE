@@ -20,7 +20,6 @@ rust-version.workspace = true
 
 [features]
 default = []
-crypto = ["aes-cbc-hmac", "aes-gcm", "hmac", "p256", "p384", "p521", "k256", "rsa"]
 
 aes-cbc-hmac = ["dep:aes", "cbc", "hmac", "dep:jose-b64", "rand_core", "sha2", "subtle"]
 aes-gcm = ["dep:aes-gcm", "digest", "dep:jose-b64", "rand_core"]
