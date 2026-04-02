@@ -1,5 +1,7 @@
 //! RSA-PSS signing implementations
 
+use alloc::vec::Vec;
+use core::iter;
 use core::marker::PhantomData;
 
 use jose_b64::serde::{Bytes, Secret};
@@ -7,7 +9,7 @@ use jose_b64::stream::Update;
 use rsa::signature::SignatureEncoding;
 use rsa::signature::hazmat::{PrehashSigner, PrehashVerifier};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
-use rsa::{RsaPrivateKey, RsaPublicKey, pss};
+use rsa::{BoxedUint, RsaPrivateKey, RsaPublicKey, pss};
 use sha2::digest::{Digest, FixedOutputReset, OutputSizeUser};
 use sha2::{Sha256, Sha384, Sha512};
 
@@ -66,6 +68,61 @@ where
             key,
             _digest: PhantomData,
         }
+    }
+
+    /// Create a signing key from RSA components.
+    ///
+    /// # Arguments
+    /// * `n` - The modulus (public)
+    /// * `e` - The public exponent
+    /// * `d` - The private exponent
+    ///
+    /// # Returns
+    /// A signing key on success, or an error if the components are invalid.
+    pub fn from_components(
+        n: impl AsRef<[u8]>,
+        e: impl AsRef<[u8]>,
+        d: impl AsRef<[u8]>,
+    ) -> Result<Self, Error> {
+        Self::from_components_with_primes(n, e, d, iter::empty::<&[u8]>())
+    }
+
+    /// Create a signing key from RSA components with CRT primes.
+    ///
+    /// # Arguments
+    /// * `n` - The modulus (public)
+    /// * `e` - The public exponent
+    /// * `d` - The private exponent
+    /// * `primes` - Iterator over prime factors (at least 2 primes required)
+    ///
+    /// # Returns
+    /// A signing key on success, or an error if the components are invalid.
+    pub fn from_components_with_primes(
+        n: impl AsRef<[u8]>,
+        e: impl AsRef<[u8]>,
+        d: impl AsRef<[u8]>,
+        primes: impl Iterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, Error> {
+        // Public components can use vartime
+        let n = BoxedUint::from_be_slice_vartime(n.as_ref());
+        let e = BoxedUint::from_be_slice_vartime(e.as_ref());
+
+        // Private components must use constant-time operations
+        let d = BoxedUint::from_be_slice(d.as_ref(), n.bits()).map_err(|_| Error::InvalidKey)?;
+        let primes_vec: Vec<_> = primes
+            .map(|p| BoxedUint::from_be_slice(p.as_ref(), n.bits()).map_err(|_| Error::InvalidKey))
+            .collect::<Result<_, _>>()?;
+
+        let mut key =
+            RsaPrivateKey::from_components(n, e, d, primes_vec).map_err(|_| Error::InvalidKey)?;
+
+        // Precompute CRT parameters for faster signing
+        key.precompute().map_err(|_| Error::InvalidKey)?;
+
+        Ok(Self {
+            key,
+            _digest: PhantomData,
+        })
     }
 }
 
@@ -188,6 +245,37 @@ where
 pub struct RsaPssVerifyingKey<D> {
     key: RsaPublicKey,
     _digest: PhantomData<D>,
+}
+
+impl<D> RsaPssVerifyingKey<D>
+where
+    D: OutputSizeUser,
+{
+    /// Create a verifying key from an RSA public key.
+    pub fn new(key: RsaPublicKey) -> Self {
+        Self {
+            key,
+            _digest: PhantomData,
+        }
+    }
+
+    /// Create a verifying key from RSA components.
+    ///
+    /// # Arguments
+    /// * `n` - The modulus (public)
+    /// * `e` - The public exponent
+    ///
+    /// # Returns
+    /// A verifying key on success, or an error if the components are invalid.
+    pub fn from_components(n: impl AsRef<[u8]>, e: impl AsRef<[u8]>) -> Result<Self, Error> {
+        let n = BoxedUint::from_be_slice_vartime(n.as_ref());
+        let e = BoxedUint::from_be_slice_vartime(e.as_ref());
+        let key = RsaPublicKey::new(n, e).map_err(|_| Error::InvalidKey)?;
+        Ok(Self {
+            key,
+            _digest: PhantomData,
+        })
+    }
 }
 
 impl<D> RsaComponents for RsaPssVerifyingKey<D> {

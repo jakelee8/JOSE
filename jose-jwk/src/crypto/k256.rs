@@ -3,16 +3,16 @@
 
 #![cfg(feature = "k256")]
 
-use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey};
+use jose_jwa::crypto::{Es256KSigningKey, Es256KVerifyingKey};
 use jose_jwa::{
-    Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing::Es256K,
+    Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing as S,
 };
 
 use super::Error;
 use super::KeyInfo;
 use crate::{Ec, EcCurves};
 
-impl KeyInfo for EcdsaVerifyingKey<k256::Secp256k1> {
+impl KeyInfo for Es256KVerifyingKey {
     fn strength(&self) -> usize {
         16
     }
@@ -21,7 +21,7 @@ impl KeyInfo for EcdsaVerifyingKey<k256::Secp256k1> {
         matches!(
             algo,
             // Signing algorithms
-            Signing(Es256K)
+            Signing(S::Es256K)
                 // Sealing algorithms (ECDH)
                 | KeyManagement(EcdhEs)
                 | KeyManagement(EcdhEsA128Kw)
@@ -31,7 +31,7 @@ impl KeyInfo for EcdsaVerifyingKey<k256::Secp256k1> {
     }
 }
 
-impl KeyInfo for EcdsaSigningKey<k256::Secp256k1> {
+impl KeyInfo for Es256KSigningKey {
     fn strength(&self) -> usize {
         16
     }
@@ -40,7 +40,7 @@ impl KeyInfo for EcdsaSigningKey<k256::Secp256k1> {
         matches!(
             algo,
             // Signing algorithms
-            Signing(Es256K)
+            Signing(S::Es256K)
                 // Sealing algorithms (ECDH)
                 | KeyManagement(EcdhEs)
                 | KeyManagement(EcdhEsA128Kw)
@@ -50,8 +50,8 @@ impl KeyInfo for EcdsaSigningKey<k256::Secp256k1> {
     }
 }
 
-impl From<&EcdsaVerifyingKey<k256::Secp256k1>> for Ec {
-    fn from(pk: &EcdsaVerifyingKey<k256::Secp256k1>) -> Self {
+impl From<&Es256KVerifyingKey> for Ec {
+    fn from(pk: &Es256KVerifyingKey) -> Self {
         Self {
             crv: EcCurves::P256K,
             x: pk.x(),
@@ -61,13 +61,13 @@ impl From<&EcdsaVerifyingKey<k256::Secp256k1>> for Ec {
     }
 }
 
-impl From<EcdsaVerifyingKey<k256::Secp256k1>> for Ec {
-    fn from(pk: EcdsaVerifyingKey<k256::Secp256k1>) -> Self {
+impl From<Es256KVerifyingKey> for Ec {
+    fn from(pk: Es256KVerifyingKey) -> Self {
         (&pk).into()
     }
 }
 
-impl TryFrom<&Ec> for EcdsaVerifyingKey<k256::Secp256k1> {
+impl TryFrom<&Ec> for Es256KVerifyingKey {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -85,7 +85,7 @@ impl TryFrom<&Ec> for EcdsaVerifyingKey<k256::Secp256k1> {
     }
 }
 
-impl TryFrom<Ec> for EcdsaVerifyingKey<k256::Secp256k1> {
+impl TryFrom<Ec> for Es256KVerifyingKey {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {
@@ -93,21 +93,21 @@ impl TryFrom<Ec> for EcdsaVerifyingKey<k256::Secp256k1> {
     }
 }
 
-impl From<&EcdsaSigningKey<k256::Secp256k1>> for Ec {
-    fn from(sk: &EcdsaSigningKey<k256::Secp256k1>) -> Self {
+impl From<&Es256KSigningKey> for Ec {
+    fn from(sk: &Es256KSigningKey) -> Self {
         let mut key: Self = sk.verifying_key().into();
         key.d = Some(sk.d().into());
         key
     }
 }
 
-impl From<EcdsaSigningKey<k256::Secp256k1>> for Ec {
-    fn from(sk: EcdsaSigningKey<k256::Secp256k1>) -> Self {
+impl From<Es256KSigningKey> for Ec {
+    fn from(sk: Es256KSigningKey) -> Self {
         (&sk).into()
     }
 }
 
-impl TryFrom<&Ec> for EcdsaSigningKey<k256::Secp256k1> {
+impl TryFrom<&Ec> for Es256KSigningKey {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -123,7 +123,7 @@ impl TryFrom<&Ec> for EcdsaSigningKey<k256::Secp256k1> {
     }
 }
 
-impl TryFrom<Ec> for EcdsaSigningKey<k256::Secp256k1> {
+impl TryFrom<Ec> for Es256KSigningKey {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {

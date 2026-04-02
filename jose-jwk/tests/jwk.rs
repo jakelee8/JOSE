@@ -92,8 +92,8 @@ mod rfc7517 {
 
         #[cfg(feature = "p256")]
         if let Key::Ec(key) = &jwk.keys[0].key {
-            use jose_jwa::crypto::EcdsaVerifyingKey;
-            let pk: EcdsaVerifyingKey<p256::NistP256> = key.try_into().unwrap();
+            use jose_jwa::crypto::Es256VerifyingKey;
+            let pk: Es256VerifyingKey = key.try_into().unwrap();
             assert_eq!(key, &(&pk).into());
         } else {
             unreachable!()
@@ -101,8 +101,9 @@ mod rfc7517 {
 
         #[cfg(feature = "rsa")]
         if let Key::Rsa(key) = &jwk.keys[1].key {
-            let pk = ::rsa::RsaPublicKey::try_from(key).unwrap();
-            assert_eq!(key, &pk.into());
+            use jose_jwa::crypto::Rs256VerifyingKey;
+            let pk: Rs256VerifyingKey = key.try_into().unwrap();
+            assert_eq!(key, &(&pk).into());
         } else {
             unreachable!()
         }
@@ -300,8 +301,8 @@ mod rfc7517 {
 
         #[cfg(feature = "p256")]
         if let Key::Ec(key) = &jwk.keys[0].key {
-            use jose_jwa::crypto::EcdsaSigningKey;
-            let sk: EcdsaSigningKey<p256::NistP256> = key.try_into().unwrap();
+            use jose_jwa::crypto::Es256SigningKey;
+            let sk: Es256SigningKey = key.try_into().unwrap();
             assert_eq!(key, &(&sk).into());
         } else {
             unreachable!()
@@ -309,8 +310,9 @@ mod rfc7517 {
 
         #[cfg(feature = "rsa")]
         if let Key::Rsa(key) = &jwk.keys[1].key {
-            let pk = ::rsa::RsaPrivateKey::try_from(key).unwrap();
-            assert_eq!(key, &pk.into());
+            use jose_jwa::crypto::Rs256SigningKey;
+            let sk: Rs256SigningKey = key.try_into().unwrap();
+            assert_eq!(key, &(&sk).into());
         } else {
             unreachable!()
         }
@@ -414,8 +416,9 @@ mod rfc7517 {
 
         #[cfg(feature = "rsa")]
         if let Key::Rsa(key) = &jwk.key {
-            let pk = ::rsa::RsaPublicKey::try_from(key).unwrap();
-            assert_eq!(key, &pk.into());
+            use jose_jwa::crypto::Rs256VerifyingKey;
+            let pk: Rs256VerifyingKey = key.try_into().unwrap();
+            assert_eq!(key, &(&pk).into());
         } else {
             unreachable!()
         }

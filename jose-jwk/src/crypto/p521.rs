@@ -3,16 +3,18 @@
 
 #![cfg(feature = "p521")]
 
-use jose_jwa::crypto::{EcdsaSigningKey, EcdsaVerifyingKey};
+use jose_jwa::crypto::{Es512SigningKey, Es512VerifyingKey};
+#[cfg(feature = "ecdh")]
+use jose_jwa::crypto::{P521PublicKey, P521SecretKey};
 use jose_jwa::{
-    Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing::Es512,
+    Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing as S,
 };
 
 use super::Error;
 use super::KeyInfo;
 use crate::{Ec, EcCurves};
 
-impl KeyInfo for EcdsaVerifyingKey<p521::NistP521> {
+impl KeyInfo for Es512VerifyingKey {
     fn strength(&self) -> usize {
         32
     }
@@ -21,7 +23,7 @@ impl KeyInfo for EcdsaVerifyingKey<p521::NistP521> {
         matches!(
             algo,
             // Signing algorithms
-            Signing(Es512)
+            Signing(S::Es512)
                 // Sealing algorithms (ECDH)
                 | KeyManagement(EcdhEs)
                 | KeyManagement(EcdhEsA128Kw)
@@ -31,7 +33,7 @@ impl KeyInfo for EcdsaVerifyingKey<p521::NistP521> {
     }
 }
 
-impl KeyInfo for EcdsaSigningKey<p521::NistP521> {
+impl KeyInfo for Es512SigningKey {
     fn strength(&self) -> usize {
         32
     }
@@ -40,7 +42,7 @@ impl KeyInfo for EcdsaSigningKey<p521::NistP521> {
         matches!(
             algo,
             // Signing algorithms
-            Signing(Es512)
+            Signing(S::Es512)
                 // Sealing algorithms (ECDH)
                 | KeyManagement(EcdhEs)
                 | KeyManagement(EcdhEsA128Kw)
@@ -50,8 +52,8 @@ impl KeyInfo for EcdsaSigningKey<p521::NistP521> {
     }
 }
 
-impl From<&EcdsaVerifyingKey<p521::NistP521>> for Ec {
-    fn from(pk: &EcdsaVerifyingKey<p521::NistP521>) -> Self {
+impl From<&Es512VerifyingKey> for Ec {
+    fn from(pk: &Es512VerifyingKey) -> Self {
         Self {
             crv: EcCurves::P521,
             x: pk.x(),
@@ -61,13 +63,13 @@ impl From<&EcdsaVerifyingKey<p521::NistP521>> for Ec {
     }
 }
 
-impl From<EcdsaVerifyingKey<p521::NistP521>> for Ec {
-    fn from(pk: EcdsaVerifyingKey<p521::NistP521>) -> Self {
+impl From<Es512VerifyingKey> for Ec {
+    fn from(pk: Es512VerifyingKey) -> Self {
         (&pk).into()
     }
 }
 
-impl TryFrom<&Ec> for EcdsaVerifyingKey<p521::NistP521> {
+impl TryFrom<&Ec> for Es512VerifyingKey {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -85,7 +87,7 @@ impl TryFrom<&Ec> for EcdsaVerifyingKey<p521::NistP521> {
     }
 }
 
-impl TryFrom<Ec> for EcdsaVerifyingKey<p521::NistP521> {
+impl TryFrom<Ec> for Es512VerifyingKey {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {
@@ -93,21 +95,21 @@ impl TryFrom<Ec> for EcdsaVerifyingKey<p521::NistP521> {
     }
 }
 
-impl From<&EcdsaSigningKey<p521::NistP521>> for Ec {
-    fn from(sk: &EcdsaSigningKey<p521::NistP521>) -> Self {
+impl From<&Es512SigningKey> for Ec {
+    fn from(sk: &Es512SigningKey) -> Self {
         let mut key: Self = sk.verifying_key().into();
         key.d = Some(sk.d().into());
         key
     }
 }
 
-impl From<EcdsaSigningKey<p521::NistP521>> for Ec {
-    fn from(sk: EcdsaSigningKey<p521::NistP521>) -> Self {
+impl From<Es512SigningKey> for Ec {
+    fn from(sk: Es512SigningKey) -> Self {
         (&sk).into()
     }
 }
 
-impl TryFrom<&Ec> for EcdsaSigningKey<p521::NistP521> {
+impl TryFrom<&Ec> for Es512SigningKey {
     type Error = Error;
 
     fn try_from(value: &Ec) -> Result<Self, Self::Error> {
@@ -123,7 +125,129 @@ impl TryFrom<&Ec> for EcdsaSigningKey<p521::NistP521> {
     }
 }
 
-impl TryFrom<Ec> for EcdsaSigningKey<p521::NistP521> {
+impl TryFrom<Ec> for Es512SigningKey {
+    type Error = Error;
+
+    fn try_from(value: Ec) -> Result<Self, Self::Error> {
+        (&value).try_into()
+    }
+}
+
+// ECDH conversions for P-521
+#[cfg(feature = "ecdh")]
+impl KeyInfo for P521PublicKey {
+    fn strength(&self) -> usize {
+        32
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            algo,
+            KeyManagement(EcdhEs)
+                | KeyManagement(EcdhEsA128Kw)
+                | KeyManagement(EcdhEsA192Kw)
+                | KeyManagement(EcdhEsA256Kw)
+        )
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl KeyInfo for P521SecretKey {
+    fn strength(&self) -> usize {
+        32
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            algo,
+            KeyManagement(EcdhEs)
+                | KeyManagement(EcdhEsA128Kw)
+                | KeyManagement(EcdhEsA192Kw)
+                | KeyManagement(EcdhEsA256Kw)
+        )
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl From<&P521PublicKey> for Ec {
+    fn from(pk: &P521PublicKey) -> Self {
+        Self {
+            crv: EcCurves::P521,
+            x: pk.x(),
+            y: pk.y(),
+            d: None,
+        }
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl From<P521PublicKey> for Ec {
+    fn from(pk: P521PublicKey) -> Self {
+        (&pk).into()
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl TryFrom<&Ec> for P521PublicKey {
+    type Error = Error;
+
+    fn try_from(value: &Ec) -> Result<Self, Self::Error> {
+        if value.crv != EcCurves::P521 {
+            return Err(Error::AlgMismatch);
+        }
+
+        Self::from_components(&value.x, &value.y).map_err(|_| Error::Invalid)
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl TryFrom<Ec> for P521PublicKey {
+    type Error = Error;
+
+    fn try_from(value: Ec) -> Result<Self, Self::Error> {
+        (&value).try_into()
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl From<&P521SecretKey> for Ec {
+    fn from(sk: &P521SecretKey) -> Self {
+        let public_key = sk.public_key();
+        Self {
+            crv: EcCurves::P521,
+            x: public_key.x(),
+            y: public_key.y(),
+            d: Some(sk.d()),
+        }
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl From<P521SecretKey> for Ec {
+    fn from(sk: P521SecretKey) -> Self {
+        (&sk).into()
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl TryFrom<&Ec> for P521SecretKey {
+    type Error = Error;
+
+    fn try_from(value: &Ec) -> Result<Self, Self::Error> {
+        if value.crv != EcCurves::P521 {
+            return Err(Error::AlgMismatch);
+        }
+
+        let Some(d) = value.d.as_ref() else {
+            return Err(Error::NotPrivate);
+        };
+
+        Self::from_bytes(d.as_ref()).map_err(|_| Error::Invalid)
+    }
+}
+
+#[cfg(feature = "ecdh")]
+impl TryFrom<Ec> for P521SecretKey {
     type Error = Error;
 
     fn try_from(value: Ec) -> Result<Self, Self::Error> {

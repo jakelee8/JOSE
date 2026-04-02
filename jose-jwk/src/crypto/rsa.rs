@@ -3,11 +3,13 @@
 
 #![cfg(feature = "rsa")]
 
-use rsa::{
-    BoxedUint, RsaPrivateKey, RsaPublicKey,
-    traits::{PrivateKeyParts, PublicKeyParts},
-};
+use alloc::vec::Vec;
 
+use jose_jwa::crypto::{
+    Ps256SigningKey, Ps256VerifyingKey, Ps384SigningKey, Ps384VerifyingKey, Ps512SigningKey,
+    Ps512VerifyingKey, Rs256SigningKey, Rs256VerifyingKey, Rs384SigningKey, Rs384VerifyingKey,
+    Rs512SigningKey, Rs512VerifyingKey, RsaComponents, RsaPrivateComponents,
+};
 use jose_jwa::{
     Algorithm, Algorithm::KeyManagement, Algorithm::Signing, KeyManagement::*, Signing as S,
 };
@@ -16,159 +18,561 @@ use super::Error;
 use super::KeyInfo;
 use crate::{Rsa, RsaOptional, RsaPrivate};
 
-impl KeyInfo for RsaPublicKey {
+// === KeyInfo implementations for RSA verifying keys ===
+
+impl KeyInfo for Rs256VerifyingKey {
     fn strength(&self) -> usize {
-        self.size() / 16
+        self.n().as_ref().len() / 16
     }
 
     fn is_supported(&self, algo: &Algorithm) -> bool {
         // RFC 7518 Section 3.3
-        //
-        // I would actually prefer stronger requirements here based on the
-        // algorithm below. However, the RFCs actually specify examples that
-        // this would break. Note that we generate stronger keys by default.
         if self.strength() < 16 {
             return false;
         }
-
-        #[allow(clippy::match_like_matches_macro)]
-        match algo {
-            // Signing algorithms
-            Signing(S::Rs256) => true,
-            Signing(S::Rs384) => true,
-            Signing(S::Rs512) => true,
-            Signing(S::Ps256) => true,
-            Signing(S::Ps384) => true,
-            Signing(S::Ps512) => true,
-            // Sealing algorithms (RSA-OAEP)
-            KeyManagement(RsaOaep) => true,
-            KeyManagement(RsaOaep256) => true,
-            _ => false,
-        }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
     }
 }
 
-impl KeyInfo for RsaPrivateKey {
+impl KeyInfo for Rs384VerifyingKey {
     fn strength(&self) -> usize {
-        self.size() / 16
+        self.n().as_ref().len() / 16
     }
 
     fn is_supported(&self, algo: &Algorithm) -> bool {
-        #[allow(clippy::match_like_matches_macro)]
-        match (algo, self.strength()) {
-            // Signing algorithms
-            (Signing(S::Rs256), 16..) => true,
-            (Signing(S::Rs384), 24..) => true,
-            (Signing(S::Rs512), 32..) => true,
-            (Signing(S::Ps256), 16..) => true,
-            (Signing(S::Ps384), 24..) => true,
-            (Signing(S::Ps512), 32..) => true,
-            // Sealing algorithms (RSA-OAEP)
-            (KeyManagement(RsaOaep), 16..) => true,
-            (KeyManagement(RsaOaep256), 16..) => true,
-            _ => false,
+        if self.strength() < 24 {
+            return false;
         }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
     }
 }
 
-impl From<&RsaPublicKey> for Rsa {
-    fn from(pk: &RsaPublicKey) -> Self {
+impl KeyInfo for Rs512VerifyingKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        if self.strength() < 32 {
+            return false;
+        }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
+    }
+}
+
+impl KeyInfo for Ps256VerifyingKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        if self.strength() < 16 {
+            return false;
+        }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
+    }
+}
+
+impl KeyInfo for Ps384VerifyingKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        if self.strength() < 24 {
+            return false;
+        }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
+    }
+}
+
+impl KeyInfo for Ps512VerifyingKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        if self.strength() < 32 {
+            return false;
+        }
+        matches!(
+            algo,
+            Signing(S::Rs256)
+                | Signing(S::Rs384)
+                | Signing(S::Rs512)
+                | Signing(S::Ps256)
+                | Signing(S::Ps384)
+                | Signing(S::Ps512)
+                | KeyManagement(RsaOaep)
+                | KeyManagement(RsaOaep256)
+        )
+    }
+}
+
+// === KeyInfo implementations for RSA signing keys ===
+
+impl KeyInfo for Rs256SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+impl KeyInfo for Rs384SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+impl KeyInfo for Rs512SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+impl KeyInfo for Ps256SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+impl KeyInfo for Ps384SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+impl KeyInfo for Ps512SigningKey {
+    fn strength(&self) -> usize {
+        self.n().as_ref().len() / 16
+    }
+
+    fn is_supported(&self, algo: &Algorithm) -> bool {
+        matches!(
+            (algo, self.strength()),
+            (Signing(S::Rs256), 16..)
+                | (Signing(S::Rs384), 24..)
+                | (Signing(S::Rs512), 32..)
+                | (Signing(S::Ps256), 16..)
+                | (Signing(S::Ps384), 24..)
+                | (Signing(S::Ps512), 32..)
+                | (KeyManagement(RsaOaep), 16..)
+                | (KeyManagement(RsaOaep256), 16..)
+        )
+    }
+}
+
+// === TryFrom<&Rsa> for RSA signing keys ===
+
+impl TryFrom<&Rsa> for Rs256SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Rs384SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Rs512SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps256SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps384SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps512SigningKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        let prv = rsa.prv.as_ref().ok_or(Error::NotPrivate)?;
+        let opt = prv.opt.as_ref().ok_or(Error::Unsupported)?;
+
+        let primes = build_primes_iter(&opt);
+        Self::from_components_with_primes(&rsa.n, &rsa.e, prv.d.as_ref(), primes)
+            .map_err(|_| Error::Invalid)
+    }
+}
+
+// === TryFrom<&Rsa> for RSA verifying keys ===
+
+impl TryFrom<&Rsa> for Rs256VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Rs384VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Rs512VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps256VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps384VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+impl TryFrom<&Rsa> for Ps512VerifyingKey {
+    type Error = Error;
+
+    fn try_from(rsa: &Rsa) -> Result<Self, Self::Error> {
+        Self::from_components(&rsa.n, &rsa.e).map_err(|_| Error::Invalid)
+    }
+}
+
+// === From<jose-jwa types> for Rsa ===
+
+fn build_rsa_optional<T: RsaPrivateComponents>(key: &T) -> Option<RsaOptional> {
+    // All CRT params must be present to construct RsaOptional
+    let (p, q, dp, dq, qi) = (key.p()?, key.q()?, key.dp()?, key.dq()?, key.qi()?);
+    Some(RsaOptional {
+        p,
+        q,
+        dp,
+        dq,
+        qi,
+        oth: Vec::new(),
+    })
+}
+
+impl From<&Rs256VerifyingKey> for Rsa {
+    fn from(key: &Rs256VerifyingKey) -> Self {
         Self {
-            n: pk.n().to_be_bytes_trimmed_vartime().into(),
-            e: pk.e().to_be_bytes_trimmed_vartime().into(),
+            n: key.n().into(),
+            e: key.e().into(),
             prv: None,
         }
     }
 }
 
-impl From<RsaPublicKey> for Rsa {
-    fn from(sk: RsaPublicKey) -> Self {
-        (&sk).into()
-    }
-}
-
-impl TryFrom<&Rsa> for RsaPublicKey {
-    type Error = Error;
-
-    fn try_from(value: &Rsa) -> Result<Self, Self::Error> {
-        let n = BoxedUint::from_be_slice_vartime(&value.n);
-        let e = BoxedUint::from_be_slice_vartime(&value.e);
-        RsaPublicKey::new(n, e).map_err(|_| Error::Invalid)
-    }
-}
-
-impl TryFrom<Rsa> for RsaPublicKey {
-    type Error = Error;
-
-    fn try_from(value: Rsa) -> Result<Self, Self::Error> {
-        (&value).try_into()
-    }
-}
-
-impl From<&RsaPrivateKey> for Rsa {
-    fn from(pk: &RsaPrivateKey) -> Self {
-        let opt = Some(RsaOptional {
-            p: pk.primes()[0].to_be_bytes().into(),
-            q: pk.primes()[1].to_be_bytes().into(),
-            dp: pk.dp().expect("unreachable").to_be_bytes().into(),
-            dq: pk.dq().expect("unreachable").to_be_bytes().into(),
-            qi: pk
-                .qinv()
-                .expect("unreachable")
-                .retrieve()
-                .to_be_bytes()
-                .into(),
-            oth: alloc::vec::Vec::new(),
-        });
+impl From<&Rs384VerifyingKey> for Rsa {
+    fn from(key: &Rs384VerifyingKey) -> Self {
         Self {
-            n: pk.n().to_be_bytes_trimmed_vartime().into(),
-            e: pk.e().to_be_bytes_trimmed_vartime().into(),
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: None,
+        }
+    }
+}
+
+impl From<&Rs512VerifyingKey> for Rsa {
+    fn from(key: &Rs512VerifyingKey) -> Self {
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: None,
+        }
+    }
+}
+
+impl From<&Ps256VerifyingKey> for Rsa {
+    fn from(key: &Ps256VerifyingKey) -> Self {
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: None,
+        }
+    }
+}
+
+impl From<&Ps384VerifyingKey> for Rsa {
+    fn from(key: &Ps384VerifyingKey) -> Self {
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: None,
+        }
+    }
+}
+
+impl From<&Ps512VerifyingKey> for Rsa {
+    fn from(key: &Ps512VerifyingKey) -> Self {
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: None,
+        }
+    }
+}
+
+impl From<&Rs256SigningKey> for Rsa {
+    fn from(key: &Rs256SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
             prv: Some(RsaPrivate {
-                d: pk.d().to_be_bytes().into(),
+                d: key.d().into(),
                 opt,
             }),
         }
     }
 }
 
-impl From<RsaPrivateKey> for Rsa {
-    fn from(sk: RsaPrivateKey) -> Self {
-        (&sk).into()
-    }
-}
-
-impl TryFrom<&Rsa> for RsaPrivateKey {
-    type Error = Error;
-
-    fn try_from(value: &Rsa) -> Result<Self, Self::Error> {
-        if let Some(prv) = value.prv.as_ref() {
-            if let Some(opt) = prv.opt.as_ref() {
-                let bits = u32::try_from(value.n.len()).map_err(|_| Error::Invalid)? * 8;
-                let n = BoxedUint::from_be_slice_vartime(&value.n);
-                let e = BoxedUint::from_be_slice_vartime(&value.e);
-                let d = BoxedUint::from_be_slice(&prv.d, bits).map_err(|_| Error::Invalid)?;
-                let p = BoxedUint::from_be_slice(&opt.p, bits).map_err(|_| Error::Invalid)?;
-                let q = BoxedUint::from_be_slice(&opt.q, bits).map_err(|_| Error::Invalid)?;
-
-                let mut primes = alloc::vec![p, q];
-                for p in opt.oth.iter() {
-                    primes.push(BoxedUint::from_be_slice(&p.r, bits).map_err(|_| Error::Invalid)?);
-                }
-
-                return Self::from_components(n, e, d, primes).map_err(|_| Error::Invalid);
-            }
-
-            return Err(Error::Unsupported);
+impl From<&Rs384SigningKey> for Rsa {
+    fn from(key: &Rs384SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: Some(RsaPrivate {
+                d: key.d().into(),
+                opt,
+            }),
         }
-
-        Err(Error::NotPrivate)
     }
 }
 
-impl TryFrom<Rsa> for RsaPrivateKey {
-    type Error = Error;
-
-    fn try_from(value: Rsa) -> Result<Self, Self::Error> {
-        (&value).try_into()
+impl From<&Rs512SigningKey> for Rsa {
+    fn from(key: &Rs512SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: Some(RsaPrivate {
+                d: key.d().into(),
+                opt,
+            }),
+        }
     }
+}
+
+impl From<&Ps256SigningKey> for Rsa {
+    fn from(key: &Ps256SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: Some(RsaPrivate {
+                d: key.d().into(),
+                opt,
+            }),
+        }
+    }
+}
+
+impl From<&Ps384SigningKey> for Rsa {
+    fn from(key: &Ps384SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: Some(RsaPrivate {
+                d: key.d().into(),
+                opt,
+            }),
+        }
+    }
+}
+
+impl From<&Ps512SigningKey> for Rsa {
+    fn from(key: &Ps512SigningKey) -> Self {
+        let opt = build_rsa_optional(key);
+        Self {
+            n: key.n().into(),
+            e: key.e().into(),
+            prv: Some(RsaPrivate {
+                d: key.d().into(),
+                opt,
+            }),
+        }
+    }
+}
+
+/// Build an iterator over prime factors for RSA key construction.
+fn build_primes_iter(opt: &RsaOptional) -> impl Iterator<Item = &[u8]> + '_ {
+    core::iter::once(opt.p.as_ref())
+        .chain(core::iter::once(opt.q.as_ref()))
+        .chain(opt.oth.iter().map(|r| r.r.as_ref()))
 }

@@ -4,17 +4,14 @@
 //! Cryptographic primitives for JWK
 
 mod k256;
-mod key;
 mod keyinfo;
-mod kind;
+mod oct;
 mod p256;
 mod p384;
 mod p521;
 mod rsa;
 
-pub use key::Key;
 pub use keyinfo::KeyInfo;
-pub use kind::Kind;
 
 use core::convert::Infallible;
 

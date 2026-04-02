@@ -20,13 +20,33 @@ rust-version.workspace = true
 
 [features]
 default = ["crypto"]
-crypto = ["p256", "p384", "p521", "k256", "rsa"]
-k256 = ["dep:k256", "jose-jwa/k256"]
-p256 = ["dep:p256", "jose-jwa/p256"]
-p384 = ["dep:p384", "jose-jwa/p384"]
-p521 = ["dep:p521", "jose-jwa/p521"]
-rsa = ["dep:rsa", "jose-jwa/rsa"]
+crypto = ["p256", "p384", "p521", "k256", "rsa", "hmac", "aes-gcm", "aes-kw", "ecdh"]
+
+# Curve features - only enable features in jose-jwa, no direct dependencies
+k256 = ["jose-jwa/k256"]
+p256 = ["jose-jwa/p256"]
+p384 = ["jose-jwa/p384"]
+p521 = ["jose-jwa/p521"]
+
+# RSA - only enable features in jose-jwa, no direct dependencies
+rsa = ["jose-jwa/rsa"]
+
+# Symmetric key algorithms
+hmac = ["jose-jwa/hmac"]
+aes-gcm = ["jose-jwa/aes-gcm"]
+aes-kw = ["jose-jwa/aes-kw"]
+aes-cbc-hmac = ["jose-jwa/aes-cbc-hmac"]
+
+# Key agreement
+ecdh = ["jose-jwa/ecdh", "p256", "p384", "p521"]
+
+# Password-based encryption
+pbes2 = ["jose-jwa/pbes2"]
+
+# Legacy/vulnerable algorithms
 legacy = ["dep:base64ct", "dep:elliptic-curve", "dep:serde_json", "dep:serdect", "dep:subtle"]
+
+# Thumbprint support
 thumbprint = ["dep:sha2"]
 
 [dependencies]
@@ -36,11 +56,6 @@ serde = { workspace = true }
 zeroize = { workspace = true }
 
 # optional dependencies
-k256 = { workspace = true, optional = true }
-p256 = { workspace = true, optional = true }
-p384 = { workspace = true, optional = true }
-p521 = { workspace = true, optional = true }
-rsa = { workspace = true, optional = true }
 sha2 = { version = "0.11.0-rc.2", default-features = false, optional = true }
 url = { version = "2.4.1", default-features = false, optional = true, features = ["serde"] }
 

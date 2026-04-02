@@ -92,6 +92,27 @@ use sha2::{Digest, Sha256};
 
 use crate::Error;
 
+/// ECDH public key for P-256 curve.
+#[cfg(feature = "p256")]
+pub type P256PublicKey = EcdhPublicKey<p256::NistP256>;
+/// ECDH secret key for P-256 curve.
+#[cfg(feature = "p256")]
+pub type P256SecretKey = EcdhSecretKey<p256::NistP256>;
+
+/// ECDH secret key for P-384 curve.
+#[cfg(feature = "p384")]
+pub type P384SecretKey = EcdhSecretKey<p384::NistP384>;
+/// ECDH public key for P-384 curve.
+#[cfg(feature = "p384")]
+pub type P384PublicKey = EcdhPublicKey<p384::NistP384>;
+
+/// ECDH public key for P-521 curve.
+#[cfg(feature = "p521")]
+pub type P521PublicKey = EcdhPublicKey<p521::NistP521>;
+/// ECDH secret key for P-521 curve.
+#[cfg(feature = "p521")]
+pub type P521SecretKey = EcdhSecretKey<p521::NistP521>;
+
 /// Compile-time curve identifier trait.
 ///
 /// Implemented by each supported curve to provide its JWK curve identifier
